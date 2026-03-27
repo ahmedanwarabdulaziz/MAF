@@ -1,0 +1,141 @@
+'use server'
+
+import { createClient } from '@/lib/supabase-server'
+import { revalidatePath } from 'next/cache'
+
+// Fetch all payment vouchers for a project
+export async function getProjectPayments(projectId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('payment_vouchers')
+    .select(`
+      *,
+      financial_account:financial_account_id(arabic_name, currency),
+      parties:payment_voucher_parties(
+        paid_amount,
+        party:party_id(arabic_name)
+      )
+    `)
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+// Fetch the "Payables Queue" (Unpaid or Partially Paid Documents)
+export async function getProjectPayablesQueue(projectId: string) {
+  const supabase = createClient()
+  
+  // 1. Supplier Invoices
+  const { data: supplierInvoices, error: supErr } = await supabase
+    .from('supplier_invoices')
+    .select(`
+      id, invoice_no, invoice_date, net_amount, paid_to_date, status,
+      supplier:supplier_party_id(id, arabic_name)
+    `)
+    .eq('project_id', projectId)
+    .in('status', ['posted', 'partially_paid'])
+
+  if (supErr) throw supErr
+
+  // 2. Subcontractor Certificates
+  const { data: subCertificates, error: subErr } = await supabase
+    .from('subcontractor_certificates')
+    .select(`
+      id, certificate_no, certificate_date, net_amount, paid_to_date, outstanding_amount, status,
+      subcontractor_agreement:subcontract_agreement_id(
+        subcontractor:subcontractor_party_id(id, arabic_name)
+      )
+    `)
+    .eq('project_id', projectId)
+    .in('status', ['approved', 'partially_paid'])
+
+  if (subErr) throw subErr
+
+  return {
+    supplier_invoices: supplierInvoices || [],
+    subcontractor_certificates: subCertificates || []
+  }
+}
+
+// Execute Payment Voucher Draft (Creates the Voucher, links Party, and Drafts Allocations)
+export async function draftPaymentVoucher(payload: {
+  project_id: string
+  company_id: string
+  payment_date: string
+  payment_method: string
+  financial_account_id: string
+  total_amount: number
+  receipt_reference_no?: string
+  notes?: string
+  party_id: string
+  allocations: { source_type: string, source_id: string, amount: number }[]
+}) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Generate a voucher number logic (could be sequenced, but random block for drafted test)
+  const voucherNo = 'PV-' + Math.random().toString(36).substring(2, 8).toUpperCase()
+
+  // 1. Create the Voucher
+  const { data: voucher, error: vErr } = await supabase
+    .from('payment_vouchers')
+    .insert([{
+      company_id: payload.company_id,
+      project_id: payload.project_id,
+      voucher_no: voucherNo,
+      payment_date: payload.payment_date,
+      payment_method: payload.payment_method,
+      financial_account_id: payload.financial_account_id,
+      total_amount: payload.total_amount,
+      direction: 'outflow',
+      status: 'draft',
+      receipt_reference_no: payload.receipt_reference_no || null,
+      notes: payload.notes || null,
+      created_by: user?.id
+    }])
+    .select('id')
+    .single()
+
+  if (vErr) throw vErr
+
+  // 2. Link the Party 
+  const { data: partyLink, error: pErr } = await supabase
+    .from('payment_voucher_parties')
+    .insert([{
+      payment_voucher_id: voucher.id,
+      party_id: payload.party_id,
+      paid_amount: payload.total_amount
+    }])
+    .select('id')
+    .single()
+
+  if (pErr) throw pErr
+
+  // 3. Create the Allocations under this party link
+  if (payload.allocations.length > 0) {
+    const allocPayload = payload.allocations.map(a => ({
+      payment_voucher_party_id: partyLink.id,
+      source_entity_type: a.source_type,
+      source_entity_id: a.source_id,
+      allocated_amount: a.amount
+    }))
+
+    const { error: aErr } = await supabase.from('payment_allocations').insert(allocPayload)
+    if (aErr) throw aErr
+  }
+
+  // Auto-post the voucher immediately to complete the flow
+  const { error: postErr } = await supabase.rpc('post_payment_voucher', {
+    p_voucher_id: voucher.id,
+    p_user_id: user?.id
+  })
+  
+  if (postErr) throw postErr
+
+  revalidatePath(`/projects/${payload.project_id}/payments`)
+  revalidatePath(`/projects/${payload.project_id}/payments/queue`)
+  
+  return voucher.id
+}

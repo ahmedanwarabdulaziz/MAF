@@ -1,0 +1,76 @@
+﻿
+> maf-core-system@0.1.0 build
+> next build
+
+  Γû▓ Next.js 14.2.3
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ Γ£ô Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+node.exe : unhandledRejection Error: Cannot find module './222.js'
+At C:\Users\ahmed\AppData\Roaming\npm\npm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/npm/bin/npm-cli.js" 
+$args
++     
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (unhandledReject...du 
+   le './222.js':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Require stack:
+- D:\Res\MAF\.next\server\webpack-runtime.js
+- D:\Res\MAF\.next\server\pages\_document.js
+- D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@18.3.1_react
+@18.3.1__react@18.3.1\node_modules\next\dist\server\require.js
+- D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@18.3.1_react
+@18.3.1__react@18.3.1\node_modules\next\dist\server\load-component
+s.js
+- D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@18.3.1_react
+@18.3.1__react@18.3.1\node_modules\next\dist\build\utils.js
+- D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@18.3.1_react
+@18.3.1__react@18.3.1\node_modules\next\dist\build\worker.js
+- D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@18.3.1_react
+@18.3.1__react@18.3.1\node_modules\next\dist\compiled\jest-worker\
+processChild.js
+    at Function.<anonymous> 
+(node:internal/modules/cjs/loader:1401:15)
+    at D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@18.3.1_
+react@18.3.1__react@18.3.1\node_modules\next\dist\server\require-h
+ook.js:55:36
+    at defaultResolveImpl 
+(node:internal/modules/cjs/loader:1057:19)
+    at resolveForCJSWithHooks 
+(node:internal/modules/cjs/loader:1062:22)
+    at Function._load (node:internal/modules/cjs/loader:1211:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    at Module.<anonymous> 
+(node:internal/modules/cjs/loader:1487:12)
+    at mod.require (D:\Res\MAF\node_modules\.pnpm\next@14.2.3_reac
+t-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\ser
+ver\require-hook.js:65:28)
+    at require (node:internal/modules/helpers:135:16) {
+  type: 'Error',
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    'D:\\Res\\MAF\\.next\\server\\webpack-runtime.js',
+    'D:\\Res\\MAF\\.next\\server\\pages\\_document.js',
+    'D:\\Res\\MAF\\node_modules\\.pnpm\\next@14.2.3_react-dom@18.3
+.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\server\\r
+equire.js',
+    'D:\\Res\\MAF\\node_modules\\.pnpm\\next@14.2.3_react-dom@18.3
+.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\server\\l
+oad-components.js',
+    'D:\\Res\\MAF\\node_modules\\.pnpm\\next@14.2.3_react-dom@18.3
+.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\build\\ut
+ils.js',
+    'D:\\Res\\MAF\\node_modules\\.pnpm\\next@14.2.3_react-dom@18.3
+.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\build\\wo
+rker.js',
+    'D:\\Res\\MAF\\node_modules\\.pnpm\\next@14.2.3_react-dom@18.3
+.1_react@18.3.1__react@18.3.1\\node_modules\\next\\dist\\compiled\
+\jest-worker\\processChild.js'
+  ]
+}

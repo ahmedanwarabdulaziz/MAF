@@ -1,0 +1,62 @@
+﻿
+> maf-core-system@0.1.0 build
+> next build
+
+  Γû▓ Next.js 14.2.3
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+node.exe : <w> [webpack.cache.PackFileCacheStrategy] Serializing 
+big strings (140kiB) impacts deserialization performance 
+(consider using Buffer instead and decode when needed)
+At C:\Users\ahmed\AppData\Roaming\npm\npm.ps1:24 char:5
++     & "node$exe"  "$basedir/node_modules/npm/bin/npm-cli.js" 
+$args
++     
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (<w> [webpack.ca...de 
+    when needed):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ Γ£ô Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/17) ...
+   Generating static pages (4/17) 
+   Generating static pages (8/17) 
+   Generating static pages (12/17) 
+ Γ£ô Generating static pages (17/17)
+   Finalizing page optimization ...
+   Collecting build traces ...
+Error: ENOENT: no such file or directory, open 
+'D:\Res\MAF\.next\server\app\_not-found\page.js.nft.json'
+    at async open (node:internal/fs/promises:633:25)
+    at async Object.readFile (node:internal/fs/promises:1237:14)
+    at async D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@1
+8.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\build\coll
+ect-build-traces.js:429:50
+    at async Promise.all (index 0)
+    at async D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@1
+8.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\build\coll
+ect-build-traces.js:410:13
+    at async Span.traceAsyncFn (D:\Res\MAF\node_modules\.pnpm\next
+@14.2.3_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\n
+ext\dist\trace\trace.js:154:20)
+    at async collectBuildTraces (D:\Res\MAF\node_modules\.pnpm\nex
+t@14.2.3_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\
+next\dist\build\collect-build-traces.js:164:5)
+    at async D:\Res\MAF\node_modules\.pnpm\next@14.2.3_react-dom@1
+8.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\build\inde
+x.js:2127:13
+    at async Span.traceAsyncFn (D:\Res\MAF\node_modules\.pnpm\next
+@14.2.3_react-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\n
+ext\dist\trace\trace.js:154:20)
+    at async build (D:\Res\MAF\node_modules\.pnpm\next@14.2.3_reac
+t-dom@18.3.1_react@18.3.1__react@18.3.1\node_modules\next\dist\bui
+ld\index.js:366:9) {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 
+'D:\\Res\\MAF\\.next\\server\\app\\_not-found\\page.js.nft.json'
+}

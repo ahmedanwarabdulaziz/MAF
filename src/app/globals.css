@@ -1,0 +1,87 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom dropdown panel animation */
+@keyframes selectDropdown {
+  from {
+    opacity: 0;
+    transform: scaleY(0.92) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1) translateY(0);
+  }
+}
+
+@layer base {
+  body {
+    @apply bg-background text-text-primary;
+    direction: rtl;
+  }
+
+  /* Force English Numbers in Inputs */
+  input[type="number"],
+  input[type="date"] {
+    direction: ltr !important;
+    text-align: right;
+  }
+
+  /* ── Premium Select Styling ────────────────────────────────── */
+  select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: left 0.75rem center;
+    background-size: 1rem;
+    padding-left: 2.5rem !important;
+    cursor: pointer;
+    transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+  }
+
+  select:hover:not(:disabled) {
+    border-color: #94a3b8;
+    background-color: #f8fafc;
+  }
+
+  select:focus {
+    outline: none;
+    border-color: #2F6FB3;
+    box-shadow:
+      0 0 0 3px rgba(47, 111, 179, 0.12),
+      0 1px 3px rgba(0, 0, 0, 0.08);
+    background-color: #ffffff;
+  }
+
+  select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #f1f5f9;
+  }
+
+  /* ── Premium Input Styling ─────────────────────────────────── */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="search"],
+  textarea {
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  input[type="text"]:focus,
+  input[type="email"]:focus,
+  input[type="password"]:focus,
+  input[type="number"]:focus,
+  input[type="date"]:focus,
+  input[type="search"]:focus,
+  textarea:focus {
+    outline: none;
+    border-color: var(--color-primary, #2563eb);
+    box-shadow:
+      0 0 0 3px rgba(37, 99, 235, 0.12),
+      0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+}
