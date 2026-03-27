@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 export async function getTreasuryAccounts(projectId?: string) {
   const supabase = createClient()
@@ -91,6 +92,14 @@ export async function transferFunds(payload: {
   }])
   if (dErr) throw dErr
 
+  await writeAuditLog({
+    action: 'funds_transferred',
+    entity_type: 'financial_account',
+    entity_id: payload.from_account_id,
+    description: `تحويل مبلغ ${payload.amount} بين حسابين`,
+    metadata: { from_account_id: payload.from_account_id, to_account_id: payload.to_account_id, amount: payload.amount, transfer_date: payload.transfer_date },
+  })
+
   revalidatePath('/company/treasury')
 }
 
@@ -122,6 +131,14 @@ export async function updateFinancialAccount(id: string, input: {
     .eq('id', id)
 
   if (error) throw new Error(error.message)
+
+  await writeAuditLog({
+    action: 'account_updated',
+    entity_type: 'financial_account',
+    entity_id: id,
+    description: `تعديل بيانات الحساب: ${input.arabic_name}`,
+    metadata: { account_id: id, arabic_name: input.arabic_name },
+  })
 
   revalidatePath('/company/treasury')
 }
@@ -187,6 +204,14 @@ export async function createFinancialAccount(input: {
     if (txErr) throw new Error(txErr.message)
   }
 
+  await writeAuditLog({
+    action: 'account_created',
+    entity_type: 'financial_account',
+    entity_id: data.id,
+    description: `إنشاء حساب مالي جديد: ${input.arabic_name} (${input.account_type})`,
+    metadata: { account_id: data.id, arabic_name: input.arabic_name, account_type: input.account_type, currency: input.currency, opening_balance: input.opening_balance },
+  })
+
   revalidatePath('/company/treasury')
   return { id: data.id }
 }
@@ -211,5 +236,14 @@ export async function depositFunds(payload: {
   })
 
   if (error) throw new Error(error.message)
+
+  await writeAuditLog({
+    action: 'manual_deposit',
+    entity_type: 'financial_account',
+    entity_id: payload.account_id,
+    description: `إيداع يدوي بمبلغ ${payload.amount}`,
+    metadata: { account_id: payload.account_id, amount: payload.amount, transaction_date: payload.transaction_date, notes: payload.notes },
+  })
+
   revalidatePath('/company/treasury')
 }

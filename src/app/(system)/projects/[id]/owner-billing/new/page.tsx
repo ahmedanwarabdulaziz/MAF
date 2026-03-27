@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { createOwnerBillingDocument } from '@/actions/owner_billing'
+import { peekNextDocumentNoByProject } from '@/actions/sequences'
 import DatePicker from '@/components/DatePicker'
 
 export default function NewOwnerBilling({ params }: { params: { id: string } }) {
@@ -16,7 +17,7 @@ export default function NewOwnerBilling({ params }: { params: { id: string } }) 
   const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    document_no: `INV-${new Date().getFullYear()}-${Math.floor(Math.random() * 1000)}`,
+    document_no: 'تلقائي',
     billing_date: new Date().toISOString().split('T')[0],
     notes: '',
     taxRate: 14 // default VAT %
@@ -42,7 +43,16 @@ export default function NewOwnerBilling({ params }: { params: { id: string } }) 
       }
       setLoading(false)
     }
+
+    async function fetchSeq() {
+      try {
+        const seq = await peekNextDocumentNoByProject(params.id, 'owner_billing_documents', 'BILL')
+        setFormData(prev => ({ ...prev, document_no: seq }))
+      } catch (err) {}
+    }
+
     fetchProject()
+    fetchSeq()
   }, [params.id])
 
   function addLine() {
@@ -136,9 +146,9 @@ export default function NewOwnerBilling({ params }: { params: { id: string } }) 
               <input
                 type="text"
                 required
+                readOnly
                 value={formData.document_no}
-                onChange={e => setFormData({ ...formData, document_no: e.target.value })}
-                className="rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-primary transition-colors"
+                className="rounded-lg border border-border bg-background-secondary px-3 py-2 text-sm outline-none cursor-not-allowed text-text-secondary transition-colors"
                 dir="ltr"
               />
             </div>

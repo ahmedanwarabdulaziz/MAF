@@ -172,9 +172,9 @@ export default function ScopesList({ scopes, projects }: Props) {
         return (
           <div key={uid} className={open ? 'bg-background-secondary/20' : ''}>
             {/* Header row */}
-            <button
+            <div
               onClick={() => toggle(uid)}
-              className="w-full flex items-center gap-4 px-6 py-4 text-right hover:bg-background-secondary/40 transition-colors"
+              className="w-full flex items-center gap-4 px-6 py-4 text-right hover:bg-background-secondary/40 transition-colors cursor-pointer"
             >
               <div className="h-9 w-9 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary">
                 {user?.display_name?.[0] ?? '؟'}
@@ -205,7 +205,7 @@ export default function ScopesList({ scopes, projects }: Props) {
                   <path d="m6 9 6 6 6-6" />
                 </svg>
               </div>
-            </button>
+            </div>
 
             {/* Expanded scope cards */}
             {open && (

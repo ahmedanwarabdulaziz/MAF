@@ -115,3 +115,36 @@ export async function updatePermissionGroupMatrixAction(groupId: string, allowed
   revalidatePath('/company/settings/permission-groups')
   return { success: true }
 }
+
+export async function deletePermissionGroupAction(groupId: string) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+
+  // Block deletion of system groups
+  const { data: group } = await supabase
+    .from('permission_groups')
+    .select('arabic_name, is_system_group')
+    .eq('id', groupId)
+    .single()
+
+  if (!group) return { error: 'المجموعة غير موجودة' }
+  if (group.is_system_group) return { error: 'لا يمكن حذف مجموعات النظام' }
+
+  const { error } = await supabase
+    .from('permission_groups')
+    .delete()
+    .eq('id', groupId)
+
+  if (error) return { error: error.message }
+
+  await writeAuditLog({
+    action: 'delete_permission_group',
+    entity_type: 'permission_group',
+    entity_id: groupId,
+    description: `حذف مجموعة صلاحيات: ${group.arabic_name}`,
+    metadata: {},
+  })
+
+  revalidatePath('/company/settings/permission-groups')
+  return { success: true }
+}

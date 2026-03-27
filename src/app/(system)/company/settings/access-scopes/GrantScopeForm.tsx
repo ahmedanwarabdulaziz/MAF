@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { grantBulkScopesAction } from './actions'
 import CustomSelect from '@/components/CustomSelect'
 
@@ -22,7 +21,6 @@ export default function GrantScopeForm({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
-  const router = useRouter()
 
   const toggleProject = (id: string) => {
     setSelectedProjects(prev => {
@@ -55,12 +53,12 @@ export default function GrantScopeForm({
 
     if (result.error) return setError(result.error)
 
-    setSuccess(`Granted ${result.granted} scope(s)${result.skipped ? ` (${result.skipped} already existed)` : ''}`)
+    setSuccess(`تم منح ${result.granted} نطاق${result.skipped ? ` (${result.skipped} موجود مسبقاً)` : ''}`)
     setUserId('')
     setGiveCompany(false)
     setGiveAllProjects(false)
     setSelectedProjects(new Set())
-    router.refresh()
+    window.location.reload()
   }
 
   // ── Empty state: all users already have scopes ────────────────

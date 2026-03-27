@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 // -------------------------------------------------------------
 // PURCHASE REQUESTS
@@ -97,6 +98,14 @@ export async function createPurchaseRequest(payload: {
   const { error: linesErr } = await supabase.from('purchase_request_lines').insert(prLines)
   if (linesErr) throw linesErr
 
+  await writeAuditLog({
+    action: 'pr_created',
+    entity_type: 'purchase_request',
+    entity_id: pr.id,
+    description: `إنشاء طلب شراء رقم ${pr.request_no} (${payload.lines.length} بند)`,
+    metadata: { request_no: pr.request_no, project_id: payload.project_id, lines_count: payload.lines.length },
+  })
+
   revalidatePath(`/projects/${payload.project_id}/procurement/requests`)
   return pr
 }
@@ -110,6 +119,15 @@ export async function submitPurchaseRequest(prId: string, projectId: string) {
     .eq('status', 'draft')
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'pr_submitted',
+    entity_type: 'purchase_request',
+    entity_id: prId,
+    description: 'تقديم طلب شراء للموافقة',
+    metadata: { pr_id: prId, project_id: projectId },
+  })
+
   revalidatePath(`/projects/${projectId}/procurement/requests/${prId}`)
 }
 
@@ -127,6 +145,15 @@ export async function approvePurchaseRequest(prId: string, projectId: string) {
     .eq('status', 'pending_approval')
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'pr_approved',
+    entity_type: 'purchase_request',
+    entity_id: prId,
+    description: 'اعتماد طلب شراء',
+    metadata: { pr_id: prId, project_id: projectId },
+  })
+
   revalidatePath(`/projects/${projectId}/procurement/requests/${prId}`)
 }
 
@@ -243,6 +270,14 @@ export async function convertPrToInvoice(prId: string, supplierPartyId: string, 
   // Update PR status
   await supabase.from('purchase_requests').update({ status: 'closed' }).eq('id', prId)
 
+  await writeAuditLog({
+    action: 'invoice_created',
+    entity_type: 'supplier_invoice',
+    entity_id: invoice.id,
+    description: `إنشاء فاتورة مورد رقم ${invoiceNo} من طلب شراء`,
+    metadata: { invoice_no: invoiceNo, pr_id: prId, supplier_party_id: supplierPartyId, project_id: pr.project_id },
+  })
+
   revalidatePath(`/projects/${pr.project_id}/procurement/invoices`)
   return invoice
 }
@@ -289,6 +324,15 @@ export async function saveInvoiceLines(invoiceId: string, projectId: string, pay
   }))
 
   await supabase.from('supplier_invoice_lines').insert(insertLines)
+
+  await writeAuditLog({
+    action: 'invoice_updated',
+    entity_type: 'supplier_invoice',
+    entity_id: invoiceId,
+    description: `تعديل بنود الفاتورة — الإجمالي: ${payload.gross_amount} — الصافي: ${payload.net_amount}`,
+    metadata: { invoice_id: invoiceId, project_id: projectId, gross_amount: payload.gross_amount, net_amount: payload.net_amount },
+  })
+
   revalidatePath(`/projects/${projectId}/procurement/invoices/${invoiceId}`)
 }
 
@@ -304,6 +348,14 @@ export async function submitInvoiceForReceipt(invoiceId: string, projectId: stri
     warehouse_id: warehouseId,
     warehouse_manager_status: 'pending',
     pm_status: 'pending'
+  })
+
+  await writeAuditLog({
+    action: 'invoice_submitted_for_receipt',
+    entity_type: 'supplier_invoice',
+    entity_id: invoiceId,
+    description: 'إرسال الفاتورة للاستلام المخزني',
+    metadata: { invoice_id: invoiceId, project_id: projectId, warehouse_id: warehouseId },
   })
 
   revalidatePath(`/projects/${projectId}/procurement/invoices/${invoiceId}`)
@@ -337,6 +389,14 @@ export async function confirmReceipt(invoiceId: string, projectId: string, roleT
   if (freshConf.warehouse_manager_status === 'approved' && freshConf.pm_status === 'approved') {
     await triggerFinalReceiptPost(invoiceId, freshConf.id, freshConf.warehouse_id)
   }
+
+  await writeAuditLog({
+    action: 'receipt_confirmed',
+    entity_type: 'supplier_invoice',
+    entity_id: invoiceId,
+    description: `تأكيد استلام بضاعة — الدور: ${roleType === 'warehouse_manager' ? 'مدير المخزن' : 'مدير المشروع'}`,
+    metadata: { invoice_id: invoiceId, project_id: projectId, role_type: roleType },
+  })
 
   revalidatePath(`/projects/${projectId}/procurement/invoices/${invoiceId}`)
 }

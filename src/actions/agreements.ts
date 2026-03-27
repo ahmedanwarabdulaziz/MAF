@@ -1,7 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 // ====== PROJECT WORK ITEMS ====== //
 
@@ -150,6 +151,15 @@ export async function createSubcontractAgreement(data: {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'agreement_created',
+    entity_type: 'subcontract_agreement',
+    entity_id: result.id,
+    description: `إنشاء عقد مقاول باطن رقم ${data.agreement_code}`,
+    metadata: { agreement_code: data.agreement_code, project_id: data.project_id, subcontractor_party_id: data.subcontractor_party_id },
+  })
+
   revalidatePath(`/projects/${data.project_id}/agreements`)
   return result
 }
@@ -164,6 +174,15 @@ export async function updateSubcontractAgreement(id: string, projectId: string, 
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'agreement_updated',
+    entity_type: 'subcontract_agreement',
+    entity_id: id,
+    description: 'تعديل بيانات عقد مقاول باطن',
+    metadata: { agreement_id: id, project_id: projectId },
+  })
+
   revalidatePath(`/projects/${projectId}/agreements`)
   revalidatePath(`/projects/${projectId}/agreements/${id}`)
   return result

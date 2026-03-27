@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createWarehouseTransfer } from '@/actions/warehouse'
+import { peekNextDocumentNo } from '@/actions/sequences'
 import DatePicker from '@/components/DatePicker'
 
 interface TransferFormProps {
@@ -28,6 +29,14 @@ export default function TransferForm({ companyId, warehouses, items, projectId, 
   // Single line state for simplicity in this phase
   const [selectedItem, setSelectedItem] = useState('')
   const [quantity, setQuantity] = useState('')
+  
+  const [docNo, setDocNo] = useState('تلقائي')
+
+  useEffect(() => {
+    peekNextDocumentNo(companyId, 'warehouse_transfers', 'TRF')
+      .then(setDocNo)
+      .catch(() => {})
+  }, [companyId])
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -98,9 +107,10 @@ export default function TransferForm({ companyId, warehouses, items, projectId, 
                 id="document_no"
                 name="document_no"
                 required
-                className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                readOnly
+                value={docNo}
+                className="w-full rounded-lg border border-border bg-background-secondary px-4 py-2 text-sm outline-none cursor-not-allowed text-text-secondary transition-colors"
                 dir="ltr"
-                placeholder="e.g. TR-2026-001"
               />
             </div>
 

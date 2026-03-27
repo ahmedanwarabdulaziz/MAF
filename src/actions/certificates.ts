@@ -1,7 +1,8 @@
 'use server'
 
-import { createClient } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 // ====== CORE CERTIFICATE ENGINE ====== //
 
@@ -87,6 +88,15 @@ export async function createDraftCertificate(data: {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'certificate_created',
+    entity_type: 'subcontractor_certificate',
+    entity_id: result.id,
+    description: `إنشاء مستخلص رقم ${data.certificate_no}`,
+    metadata: { certificate_no: data.certificate_no, project_id: data.project_id, subcontractor_party_id: data.subcontractor_party_id },
+  })
+
   revalidatePath(`/projects/${data.project_id}/certificates`)
   return result
 }
@@ -220,6 +230,15 @@ export async function submitCertificateForApproval(certificateId: string, projec
     .eq('status', 'draft')
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'certificate_submitted',
+    entity_type: 'subcontractor_certificate',
+    entity_id: certificateId,
+    description: 'تقديم مستخلص للموافقة',
+    metadata: { certificate_id: certificateId, project_id: projectId },
+  })
+
   revalidatePath(`/projects/${projectId}/certificates`)
 }
 
@@ -240,6 +259,15 @@ export async function approveCertificate(certificateId: string, projectId: strin
     .in('status', ['draft', 'pending_approval'])
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'certificate_approved',
+    entity_type: 'subcontractor_certificate',
+    entity_id: certificateId,
+    description: 'اعتماد مستخلص مقاول الباطن',
+    metadata: { certificate_id: certificateId, project_id: projectId },
+  })
+
   revalidatePath(`/projects/${projectId}/certificates`)
   return true
 }

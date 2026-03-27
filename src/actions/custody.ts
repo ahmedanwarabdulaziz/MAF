@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 // -------------------------------------------------------------------
 // CUSTODY ACCOUNTS (العهد)
@@ -128,6 +129,14 @@ export async function recordPettyExpense(payload: {
 
   if (error) throw error
   
+  await writeAuditLog({
+    action: 'expense_created',
+    entity_type: 'petty_expense',
+    entity_id: expense.id,
+    description: `تسجيل مصروف نثري بمبلغ ${payload.total_amount}`,
+    metadata: { expense_id: expense.id, total_amount: payload.total_amount, expense_date: payload.expense_date, project_id: payload.project_id },
+  })
+
   if (payload.project_id) revalidatePath(`/projects/${payload.project_id}`)
   return expense
 }
@@ -179,6 +188,15 @@ export async function approvePettyExpense(expenseId: string, action: 'pm_approve
 
   const { error: upErr } = await supabase.from('petty_expenses').update(updates).eq('id', expenseId)
   if (upErr) throw upErr
+
+  const actionLabel = action === 'pm_approve' ? 'موافقة مدير المشروع' : action === 'gm_approve' ? 'موافقة المدير العام' : 'رفض'
+  await writeAuditLog({
+    action: 'expense_approved',
+    entity_type: 'petty_expense',
+    entity_id: expenseId,
+    description: `تحديث حالة مصروف نثري — الإجراء: ${actionLabel}`,
+    metadata: { expense_id: expenseId, action, total_amount: expense.total_amount },
+  })
 }
 
 // -------------------------------------------------------------------

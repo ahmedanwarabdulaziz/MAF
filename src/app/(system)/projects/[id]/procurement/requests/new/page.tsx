@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createPurchaseRequest } from '@/actions/procurement'
 import { createClient } from '@/lib/supabase'
+import { peekNextDocumentNoByProject } from '@/actions/sequences'
 import DatePicker from '@/components/DatePicker'
+import CustomSelect from '@/components/CustomSelect'
 
 export default function NewPurchaseRequest({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -16,7 +18,7 @@ export default function NewPurchaseRequest({ params }: { params: { id: string } 
   const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    request_no: `PR-${Math.floor(Math.random() * 10000)}`,
+    request_no: 'تلقائي',
     request_date: new Date().toISOString().split('T')[0],
     required_by_date: '',
     notes: ''
@@ -33,8 +35,15 @@ export default function NewPurchaseRequest({ params }: { params: { id: string } 
       setItems(data || [])
       setLoadingItems(false)
     }
+    async function fetchSeq() {
+      try {
+        const seq = await peekNextDocumentNoByProject(params.id, 'purchase_request', 'PR')
+        setFormData(prev => ({ ...prev, request_no: seq }))
+      } catch (err) {}
+    }
     fetchItems()
-  }, [])
+    fetchSeq()
+  }, [params.id])
 
   function addLine() {
     setLines([...lines, { item_id: '', requested_quantity: 1, estimated_unit_price: 0, notes: '' }])
@@ -102,22 +111,25 @@ export default function NewPurchaseRequest({ params }: { params: { id: string } 
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Header */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="flex flex-col gap-1.5 focus-within:text-primary">
+              <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-text-primary">رقم الطلب <span className="text-danger">*</span></label>
                 <input
                   type="text"
                   required
+                  readOnly
                   value={formData.request_no}
-                  onChange={e => setFormData({ ...formData, request_no: e.target.value })}
-                  className="rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-primary transition-colors"
+                  className="rounded-lg border border-border bg-background-secondary px-3 py-2 text-sm outline-none cursor-not-allowed text-text-secondary transition-colors"
                   dir="ltr"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-text-primary">تاريخ الطلب <span className="text-danger">*</span></label>
-                <DatePicker
+                <input
+                  type="date"
+                  required
+                  readOnly
                   value={formData.request_date}
-                  onChange={val => setFormData({ ...formData, request_date: val })}
+                  className="rounded-lg border border-border bg-background-secondary px-3 py-2 text-sm outline-none cursor-not-allowed text-text-secondary transition-colors w-full"
                 />
               </div>
               <div className="flex flex-col gap-1.5">
@@ -160,17 +172,14 @@ export default function NewPurchaseRequest({ params }: { params: { id: string } 
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div className="flex flex-col gap-1 md:col-span-2">
                           <label className="text-xs font-semibold text-text-secondary">الصنف (المادة) <span className="text-danger">*</span></label>
-                          <select
+                          <CustomSelect
+                            searchable
                             required
                             value={line.item_id}
-                            onChange={e => updateLine(idx, 'item_id', e.target.value)}
-                            className="rounded-md border border-border bg-white px-2 py-1.5 text-sm outline-none focus:border-primary"
-                          >
-                            <option value="" disabled>اختر الصنف من الدليل...</option>
-                            {items.map(it => (
-                              <option key={it.id} value={it.id}>{it.item_code} - {it.arabic_name}</option>
-                            ))}
-                          </select>
+                            onChange={val => updateLine(idx, 'item_id', val)}
+                            options={items.map(it => ({ value: it.id, label: `${it.item_code} - ${it.arabic_name}` }))}
+                            placeholder="اختر الصنف من الدليل..."
+                          />
                         </div>
                         <div className="flex flex-col gap-1">
                           <label className="text-xs font-semibold text-text-secondary">الكمية المطلوبة <span className="text-danger">*</span></label>

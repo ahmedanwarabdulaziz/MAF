@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import CustomSelect from '@/components/CustomSelect'
 import DatePicker from '@/components/DatePicker'
+import { peekNextCompanyDocumentNo } from '@/actions/sequences'
 
 const PlusIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
@@ -62,7 +63,7 @@ export default function PurchaseInvoiceForm({ categories, suppliers, branches, w
 
   const [invoiceType, setInvoiceType] = useState<'general_expense' | 'stock_purchase'>('general_expense')
   const [supplierId, setSupplierId] = useState('')
-  const [invoiceNo, setInvoiceNo] = useState(`INV-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`)
+  const [invoiceNo, setInvoiceNo] = useState('تلقائي')
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
   const [expenseCategoryId, setExpenseCategoryId] = useState('')
   const [branchId, setBranchId] = useState('')
@@ -74,6 +75,14 @@ export default function PurchaseInvoiceForm({ categories, suppliers, branches, w
   const [lines, setLines] = useState<Line[]>([
     { id: generateLineId(), item_id: null, description: '', expense_category_id: null, quantity: 1, unit_price: 0, line_gross: 0, line_net: 0 },
   ])
+
+  import('react').then(({ useEffect }) => {
+    useEffect(() => {
+      peekNextCompanyDocumentNo('company_purchase_invoices', 'PINV')
+        .then(seq => setInvoiceNo(seq))
+        .catch(() => {})
+    }, [])
+  })
 
   const categoryTree = buildCategoryTree(categories)
 

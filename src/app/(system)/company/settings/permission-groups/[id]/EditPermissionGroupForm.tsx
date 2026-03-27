@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { updatePermissionGroupMatrixAction } from '../actions'
 
 interface Permission {
@@ -96,9 +97,9 @@ export default function EditPermissionGroupForm({
   allPermissions: Permission[]
   initiallyAllowed: string[]
 }) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [saved, setSaved] = useState(false)
   const [allowedSet, setAllowedSet] = useState<Set<string>>(new Set(initiallyAllowed))
 
   const disabled = group.is_system_group
@@ -120,7 +121,6 @@ export default function EditPermissionGroupForm({
       next.has(key) ? next.delete(key) : next.add(key)
       return next
     })
-    setSaved(false)
   }
 
   // Toggle all actions within a section group
@@ -136,7 +136,6 @@ export default function EditPermissionGroupForm({
       else allKeys.forEach(k => next.add(k))
       return next
     })
-    setSaved(false)
   }
 
   const isSectionOn = (modules: string[]) => {
@@ -150,12 +149,11 @@ export default function EditPermissionGroupForm({
     if (disabled) return
     setLoading(true)
     setError(null)
-    setSaved(false)
 
     const result = await updatePermissionGroupMatrixAction(group.id, Array.from(allowedSet))
     setLoading(false)
     if (result.error) setError(result.error)
-    else setSaved(true)
+    else router.push('/company/settings/permission-groups')
   }
 
   return (
@@ -163,11 +161,6 @@ export default function EditPermissionGroupForm({
       {error && (
         <div className="rounded-lg bg-danger/10 p-3 text-sm text-danger border border-danger/20">
           {error}
-        </div>
-      )}
-      {saved && (
-        <div className="rounded-lg bg-success/10 p-3 text-sm text-success border border-success/20">
-          ✓ تم حفظ الصلاحيات بنجاح
         </div>
       )}
 

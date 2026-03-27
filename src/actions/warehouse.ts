@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 export async function getMainCompanyId() {
   const supabase = createClient()
@@ -68,6 +69,15 @@ export async function createItem(data: any) {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'item_created',
+    entity_type: 'item',
+    entity_id: result.id,
+    description: `إضافة صنف جديد: ${data.arabic_name ?? data.item_code ?? result.id}`,
+    metadata: { item_code: data.item_code, arabic_name: data.arabic_name },
+  })
+
   revalidatePath('/company/main_warehouse/items')
   return result
 }
@@ -144,6 +154,14 @@ export async function createWarehouseTransfer(data: {
     // Ideally rollback or call an RPC, but we'll just throw for now.
     throw linesError
   }
+
+  await writeAuditLog({
+    action: 'warehouse_transfer_created',
+    entity_type: 'warehouse_transfer',
+    entity_id: headerResult.id,
+    description: `إنشاء إذن تحويل مخزني (${data.lines.length} صنف)`,
+    metadata: { transfer_id: headerResult.id, lines_count: data.lines.length },
+  })
 
   revalidatePath('/company/main_warehouse/transfers')
   revalidatePath('/projects/[projectId]/project_warehouse/transfers')

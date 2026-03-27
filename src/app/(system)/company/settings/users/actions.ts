@@ -111,3 +111,36 @@ export async function updateUserAction(userId: string, formData: FormData) {
   revalidatePath('/company/settings/users')
   return { success: true }
 }
+
+export async function deleteUserAction(userId: string) {
+  await requireSuperAdmin()
+
+  const adminClient = createAdminClient()
+
+  // Delete from Supabase Auth (cascades to public.users via trigger)
+  const { error } = await adminClient.auth.admin.deleteUser(userId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  revalidatePath('/company/settings/users')
+  return { success: true }
+}
+
+export async function toggleUserActiveAction(userId: string, newValue: boolean) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+
+  const { error } = await supabase
+    .from('users')
+    .update({ is_active: newValue })
+    .eq('id', userId)
+
+  if (error) {
+    return { error: error.message }
+  }
+
+  revalidatePath('/company/settings/users')
+  return { success: true }
+}

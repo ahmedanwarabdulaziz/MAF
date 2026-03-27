@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 // Fetch all payment vouchers for a project
 export async function getProjectPayments(projectId: string) {
@@ -75,8 +76,8 @@ export async function draftPaymentVoucher(payload: {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Generate a voucher number logic (could be sequenced, but random block for drafted test)
-  const voucherNo = 'PV-' + Math.random().toString(36).substring(2, 8).toUpperCase()
+  // Let the DB trigger handle sequential numbering
+  const voucherNo = 'تلقائي'
 
   // 1. Create the Voucher
   const { data: voucher, error: vErr } = await supabase
@@ -133,6 +134,14 @@ export async function draftPaymentVoucher(payload: {
   })
   
   if (postErr) throw postErr
+
+  await writeAuditLog({
+    action: 'payment_created',
+    entity_type: 'payment_voucher',
+    entity_id: voucher.id,
+    description: `تسجيل دفعة صرف بمبلغ ${payload.total_amount} — طريقة: ${payload.payment_method}`,
+    metadata: { voucher_id: voucher.id, total_amount: payload.total_amount, payment_method: payload.payment_method, party_id: payload.party_id, project_id: payload.project_id, allocations_count: payload.allocations.length },
+  })
 
   revalidatePath(`/projects/${payload.project_id}/payments`)
   revalidatePath(`/projects/${payload.project_id}/payments/queue`)

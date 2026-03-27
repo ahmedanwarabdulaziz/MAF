@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
 import { getPurchaseRequestDetails, convertPrToInvoice, getPurchaseRequests } from '@/actions/procurement'
+import { peekNextDocumentNoByProject } from '@/actions/sequences'
 import DatePicker from '@/components/DatePicker'
 import CustomSelect from '@/components/CustomSelect'
 
@@ -24,7 +25,7 @@ export default function NewSupplierInvoice({ params }: { params: { id: string } 
 
   const [formData, setFormData] = useState({
     supplier_party_id: '',
-    invoice_no: `INV-${Math.floor(Math.random() * 10000)}`,
+    invoice_no: 'تلقائي',
     invoice_date: new Date().toISOString().split('T')[0]
   })
 
@@ -56,7 +57,16 @@ export default function NewSupplierInvoice({ params }: { params: { id: string } 
         setLoading(false)
       }
     }
+
+    async function fetchSeq() {
+      try {
+        const seq = await peekNextDocumentNoByProject(params.id, 'supplier_invoices', 'INV')
+        setFormData(prev => ({ ...prev, invoice_no: seq }))
+      } catch (err) {}
+    }
+
     init()
+    fetchSeq()
   }, [sourcePrId, params.id])
 
   async function handleSubmit(e: React.FormEvent) {
