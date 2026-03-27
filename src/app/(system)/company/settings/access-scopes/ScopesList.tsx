@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import EditScopeButton from './EditScopeButton'
 import { toggleAccessScopeAction, deleteAccessScopeAction } from './actions'
+import AddScopeButton from './AddScopeButton'
 
 const SCOPE_LABELS: Record<string, string> = {
   main_company: 'الشركة الرئيسية',
@@ -183,6 +184,7 @@ export default function ScopesList({ scopes, projects }: Props) {
                 {user?.email && <div className="text-xs text-text-secondary mt-0.5" dir="ltr">{user.email}</div>}
               </div>
               <div className="shrink-0 flex items-center gap-3">
+                <AddScopeButton userId={uid} userName={user?.display_name ?? 'Unknown'} projects={projects} />
                 <span className="text-xs text-text-secondary">
                   <span className="font-semibold text-text-primary">{activeCount}</span> / {rows.length} active
                 </span>
