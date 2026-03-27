@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { getTreasuryAccounts } from '@/actions/treasury'
+import { requirePermission } from '@/lib/auth'
 
 export const metadata = {
   title: 'الخزينة والحسابات البنكية | نظام إدارة المقاولات'
 }
 
 export default async function CorporateTreasuryDashboard() {
+  await requirePermission('treasury', 'view')
   const accounts = await getTreasuryAccounts()
 
   const corporateAccounts = accounts?.filter(a => !a.project_id) || []

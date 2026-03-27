@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 
 export default async function TransfersPage() {
-  await requireAuth()
+  await requirePermission('main_warehouse', 'view')
   const supabase = createClient()
 
   const { data: transfers } = await supabase

@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 
 export default async function WarehousesPage() {
-  await requireAuth()
+  await requirePermission('main_warehouse', 'view')
   const supabase = createClient()
 
   // Fetch warehouses along with their project if linked

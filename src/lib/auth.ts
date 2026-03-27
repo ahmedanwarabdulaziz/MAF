@@ -54,6 +54,45 @@ export async function requireSuperAdmin() {
   return user
 }
 
+/**
+ * Require a specific permission, redirecting to /company if not granted.
+ * Super admins always pass through.
+ */
+export async function requirePermission(moduleKey: string, actionKey: string = 'view') {
+  const session = await requireAuth()
+  const supabase = createClient()
+  const { data: profile } = await supabase
+    .from('users')
+    .select('id, is_super_admin')
+    .eq('id', session.user.id)
+    .single()
+
+  if (!profile) redirect('/login')
+  if (profile.is_super_admin) return profile
+
+  // Check group-based permission
+  const { data: groupAssignments } = await supabase
+    .from('user_permission_group_assignments')
+    .select('permission_group_id')
+    .eq('user_id', profile.id)
+    .eq('is_active', true)
+
+  if (!groupAssignments?.length) redirect('/company')
+
+  const groupIds = groupAssignments.map(a => a.permission_group_id)
+  const { data } = await supabase
+    .from('permission_group_permissions')
+    .select('id')
+    .in('permission_group_id', groupIds)
+    .eq('module_key', moduleKey)
+    .eq('action_key', actionKey)
+    .eq('is_allowed', true)
+    .limit(1)
+
+  if (!data?.length) redirect('/company')
+  return profile
+}
+
 // ─── Server Actions: sign-in / sign-out ───────────────────────
 
 export async function signIn(email: string, password: string) {

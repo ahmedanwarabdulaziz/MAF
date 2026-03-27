@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { UserScope } from '@/lib/permissions'
 
 type Project = {
   id: string
@@ -9,7 +10,13 @@ type Project = {
   project_code: string
 }
 
-export default function HeaderNav({ projects }: { projects: Project[] }) {
+type Props = {
+  projects: Project[]
+  userScopes: UserScope[]
+  isSuperAdmin: boolean
+}
+
+export default function HeaderNav({ projects, userScopes, isSuperAdmin }: Props) {
   const pathname = usePathname()
 
   // Determine active context
@@ -23,9 +30,34 @@ export default function HeaderNav({ projects }: { projects: Project[] }) {
     return match?.[1] ?? null
   })()
 
+  // Determine which projects this user can access based on their scopes
+  const visibleProjects = (() => {
+    // Super admins see all projects
+    if (isSuperAdmin) return projects
+
+    // Check scope types
+    const hasAllProjects = userScopes.some(s => s.scope_type === 'all_projects')
+    if (hasAllProjects) return projects
+
+    // Filter by selected_project scopes
+    const selectedProjectIds = new Set(
+      userScopes
+        .filter(s => s.scope_type === 'selected_project' && s.project_id)
+        .map(s => s.project_id!)
+    )
+
+    if (selectedProjectIds.size === 0) return []
+    return projects.filter(p => selectedProjectIds.has(p.id))
+  })()
+
+  // Check if user has main_company scope (or is super admin)
+  const hasCompanyScope = isSuperAdmin || userScopes.some(
+    s => s.scope_type === 'main_company' || s.scope_type === 'all_projects'
+  )
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
-      {/* Company Tag */}
+      {/* Company Tag — show always (every user has at least dashboard) */}
       <Link
         href="/company"
         className={`
@@ -42,12 +74,12 @@ export default function HeaderNav({ projects }: { projects: Project[] }) {
       </Link>
 
       {/* Divider */}
-      {projects.length > 0 && (
+      {visibleProjects.length > 0 && (
         <span className="text-border select-none mx-1 text-sm">|</span>
       )}
 
       {/* Project Tags */}
-      {projects.map((project) => {
+      {visibleProjects.map((project) => {
         const isActive = activeProjectId === project.id
         return (
           <Link
@@ -73,8 +105,15 @@ export default function HeaderNav({ projects }: { projects: Project[] }) {
         )
       })}
 
-      {/* Empty state — no projects yet */}
-      {projects.length === 0 && (
+      {/* Empty state — no visible projects */}
+      {visibleProjects.length === 0 && !isSuperAdmin && (
+        <span className="text-xs text-text-secondary italic px-2">
+          لا توجد مشاريع مخصصة
+        </span>
+      )}
+
+      {/* Super admin empty state */}
+      {visibleProjects.length === 0 && isSuperAdmin && (
         <span className="text-xs text-text-secondary italic px-2">
           لا توجد مشاريع مضافة
         </span>

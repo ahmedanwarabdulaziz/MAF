@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import { Suspense } from 'react'
 import ItemsFilterBar from './ItemsFilterBar'
@@ -10,7 +10,7 @@ interface PageProps {
 }
 
 export default async function ItemsPage({ searchParams }: PageProps) {
-  await requireAuth()
+  await requirePermission('main_warehouse', 'view')
   const supabase = createClient()
   const companyId = await getMainCompanyId()
 

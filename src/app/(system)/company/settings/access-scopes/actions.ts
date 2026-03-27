@@ -142,7 +142,6 @@ export async function grantBulkScopesAction(
   return { success: true, granted: toInsert.length, skipped }
 }
 
-
 export async function revokeAccessScopeAction(scopeId: string) {
   await requireSuperAdmin()
   const supabase = createClient()
@@ -184,6 +183,139 @@ export async function revokeAccessScopeAction(scopeId: string) {
     description: revokeDesc,
     metadata: meta,
   })
+  revalidatePath('/company/settings/access-scopes')
+  return { success: true }
+}
+
+export async function updateAccessScopeAction(
+  scopeId: string,
+  scopeType: string,
+  projectId: string | null
+) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+
+  if (!scopeId || !scopeType) {
+    return { error: 'بيانات غير مكتملة' }
+  }
+
+  if (scopeType === 'selected_project' && !projectId) {
+    return { error: 'يرجى اختيار المشروع' }
+  }
+
+  const updateData: Record<string, unknown> = {
+    scope_type: scopeType,
+    project_id: scopeType === 'selected_project' ? projectId : null,
+  }
+
+  const { error } = await supabase
+    .from('user_access_scopes')
+    .update(updateData)
+    .eq('id', scopeId)
+
+  if (error) {
+    return { error: 'حدث خطأ أثناء التعديل: ' + error.message }
+  }
+
+  // Fetch details for audit log
+  const { data: updatedRow } = await supabase
+    .from('user_access_scopes')
+    .select('user_id')
+    .eq('id', scopeId)
+    .maybeSingle()
+
+  if (updatedRow) {
+    const { data: u } = await supabase.from('users').select('display_name').eq('id', updatedRow.user_id).maybeSingle()
+    let projLabel = ''
+    if (scopeType === 'selected_project' && projectId) {
+      const { data: proj } = await supabase.from('projects').select('arabic_name, project_code').eq('id', projectId).maybeSingle()
+      projLabel = proj ? ` - ${proj.arabic_name} (${proj.project_code})` : ''
+    }
+    const scopeLabels: Record<string, string> = {
+      main_company: 'الشركة الرئيسية',
+      all_projects: 'جميع المشاريع',
+      selected_project: 'مشروع محدد',
+      selected_warehouse: 'مخزن محدد',
+    }
+    await writeAuditLog({
+      action: 'update_scope',
+      entity_type: 'user_access_scope',
+      entity_id: scopeId,
+      description: `تعديل نطاق وصول إلى (${scopeLabels[scopeType] ?? scopeType}${projLabel}) للمستخدم ${u?.display_name ?? updatedRow.user_id}`,
+      metadata: { scope_type: scopeType, project_id: projectId ?? null },
+    })
+  }
+
+  revalidatePath('/company/settings/access-scopes')
+  return { success: true }
+}
+
+export async function toggleAccessScopeAction(scopeId: string, activate: boolean) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+
+  const { data: scopeRow } = await supabase
+    .from('user_access_scopes')
+    .select('user_id, scope_type')
+    .eq('id', scopeId)
+    .maybeSingle()
+
+  const { error } = await supabase
+    .from('user_access_scopes')
+    .update({ is_active: activate })
+    .eq('id', scopeId)
+
+  if (error) return { error: 'Failed to update scope: ' + error.message }
+
+  if (scopeRow) {
+    const { data: u } = await supabase.from('users').select('display_name').eq('id', scopeRow.user_id).maybeSingle()
+    const scopeLabels: Record<string, string> = {
+      main_company: 'الشركة الرئيسية', all_projects: 'جميع المشاريع', selected_project: 'مشروع محدد',
+    }
+    await writeAuditLog({
+      action: activate ? 'activate_scope' : 'deactivate_scope',
+      entity_type: 'user_access_scope',
+      entity_id: scopeId,
+      description: `${activate ? 'تفعيل' : 'تعطيل'} نطاق (${scopeLabels[scopeRow.scope_type] ?? scopeRow.scope_type}) للمستخدم ${u?.display_name ?? scopeRow.user_id}`,
+      metadata: { scope_type: scopeRow.scope_type, is_active: activate },
+    })
+  }
+
+  revalidatePath('/company/settings/access-scopes')
+  return { success: true }
+}
+
+export async function deleteAccessScopeAction(scopeId: string) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+
+  const { data: scopeRow } = await supabase
+    .from('user_access_scopes')
+    .select('user_id, scope_type, project_id')
+    .eq('id', scopeId)
+    .maybeSingle()
+
+  const { error } = await supabase
+    .from('user_access_scopes')
+    .delete()
+    .eq('id', scopeId)
+
+  if (error) return { error: 'Failed to delete scope: ' + error.message }
+
+  if (scopeRow) {
+    const { data: u } = await supabase.from('users').select('display_name').eq('id', scopeRow.user_id).maybeSingle()
+    const scopeLabels: Record<string, string> = {
+      main_company: 'الشركة الرئيسية', all_projects: 'جميع المشاريع', selected_project: 'مشروع محدد',
+    }
+    await writeAuditLog({
+      action: 'delete_scope',
+      entity_type: 'user_access_scope',
+      entity_id: scopeId,
+      description: `حذف نطاق (${scopeLabels[scopeRow.scope_type] ?? scopeRow.scope_type}) للمستخدم ${u?.display_name ?? scopeRow.user_id}`,
+      metadata: { scope_type: scopeRow.scope_type, project_id: scopeRow.project_id ?? null },
+    })
+  }
+
   revalidatePath('/company/settings/access-scopes')
   return { success: true }
 }

@@ -1,4 +1,4 @@
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase-server'
 import TransferForm from '@/app/(system)/company/main_warehouse/transfers/new/transfer-form'
 import { getMainCompanyId } from '@/actions/warehouse'
@@ -8,7 +8,7 @@ export default async function NewProjectTransferPage({
 }: {
   params: { id: string }
 }) {
-  await requireAuth()
+  await requirePermission('project_warehouse', 'view')
   
   const supabase = createClient()
   const companyId = await getMainCompanyId()

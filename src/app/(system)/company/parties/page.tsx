@@ -1,5 +1,5 @@
 import { getParties, PartyRoleType } from '@/lib/projects'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import PartiesFilterBar from './PartiesFilterBar'
 
@@ -17,7 +17,7 @@ const ROLE_COLORS: Record<string, string> = {
 export default async function PartiesPage(props: {
   searchParams: Promise<{ q?: string; role?: string; status?: string }>
 }) {
-  await requireAuth()
+  await requirePermission('party_masters', 'view')
   const searchParams = await props.searchParams
   const parties = await getParties({
     q: searchParams.q,

@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import { formatDate } from '@/lib/format'
 
 export default async function MainStockBalancesPage() {
-  await requireAuth()
+  await requirePermission('main_warehouse', 'view')
   const supabase = createClient()
 
   // For the main company stock, we fetch stock_balances where warehouse_type = main_company

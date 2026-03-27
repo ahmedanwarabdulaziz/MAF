@@ -1,5 +1,5 @@
 import { getParty } from '@/lib/projects'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import EditPartyForm from '../EditPartyForm'
@@ -7,7 +7,7 @@ import EditPartyForm from '../EditPartyForm'
 interface Props { params: { id: string } }
 
 export default async function EditPartyPage({ params }: Props) {
-  await requireAuth()
+  await requirePermission('party_masters', 'view')
   const party = await getParty(params.id)
   if (!party) notFound()
 

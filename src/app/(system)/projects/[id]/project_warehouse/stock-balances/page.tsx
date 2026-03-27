@@ -1,12 +1,12 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 
 export default async function ProjectStockBalancesPage({
   params
 }: {
   params: { id: string }
 }) {
-  await requireAuth()
+  await requirePermission('project_warehouse', 'view')
   const supabase = createClient()
 
   // Fetch stock_balances where warehouse belongs to this project

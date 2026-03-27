@@ -120,6 +120,16 @@ export async function getUserScopes(userId: string): Promise<UserScope[]> {
 }
 
 /**
+ * Returns a Set of module_keys the user is allowed to access.
+ * Super Admins get all modules. Regular users get only assigned modules.
+ * Use this for fast sidebar/nav filtering.
+ */
+export async function getEffectiveModuleKeys(userId: string): Promise<Set<string>> {
+  const perms = await getEffectivePermissions(userId)
+  return new Set(perms.map(p => p.module_key))
+}
+
+/**
  * Check if a user has access to a specific project (based on scope).
  */
 export async function hasProjectScope(userId: string, projectId: string): Promise<boolean> {

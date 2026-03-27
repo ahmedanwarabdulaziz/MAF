@@ -1,5 +1,5 @@
 import { getParty } from '@/lib/projects'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -17,7 +17,7 @@ const ROLE_COLORS: Record<string, string> = {
 interface Props { params: { id: string } }
 
 export default async function PartyShowPage({ params }: Props) {
-  await requireAuth()
+  await requirePermission('party_masters', 'view')
   const party = await getParty(params.id)
   if (!party) notFound()
   const p = party as any

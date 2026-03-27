@@ -1,5 +1,5 @@
 import { getCompany } from '@/lib/projects'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
 

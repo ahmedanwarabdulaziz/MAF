@@ -1,10 +1,10 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import ItemGroupTree from './ItemGroupTree'
 
 export default async function ItemGroupsPage() {
-  await requireAuth()
+  await requirePermission('main_warehouse', 'view')
   const supabase = createClient()
 
   const { data: groups } = await supabase

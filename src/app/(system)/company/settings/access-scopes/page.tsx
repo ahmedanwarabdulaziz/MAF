@@ -41,19 +41,25 @@ export default async function AccessScopesPage() {
     project: s.project_id ? projectMap[s.project_id] ?? null : null,
   }))
 
-  // Users list for form (active, non-super-admin)
-  const { data: users } = await supabase
+  // Users list for form — exclude users who already have any scope
+  const usersWithScopes = new Set((rawScopes ?? []).map(s => s.user_id))
+
+  const { data: allUsersForForm } = await supabase
     .from('users')
     .select('id, display_name')
     .eq('is_active', true)
     .eq('is_super_admin', false)
     .order('display_name')
 
+  // Only users without any existing scope entry
+  const users = (allUsersForForm ?? []).filter(u => !usersWithScopes.has(u.id))
+
   const { data: projects } = await supabase
     .from('projects')
     .select('id, arabic_name, project_code')
     .is('archived_at', null)
     .order('arabic_name')
+
 
   return (
     <div>
@@ -94,7 +100,7 @@ export default async function AccessScopesPage() {
           <h2 className="font-semibold text-text-primary">النطاقات الممنوحة الحالية</h2>
           <span className="text-xs text-text-secondary">{scopes.length} نطاق</span>
         </div>
-        <ScopesList scopes={scopes} />
+        <ScopesList scopes={scopes} projects={projects ?? []} />
       </div>
     </div>
   )

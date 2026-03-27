@@ -37,9 +37,9 @@ export default function GrantScopeForm({
     setError(null)
     setSuccess(null)
 
-    if (!userId) return setError('يرجى اختيار المستخدم')
+    if (!userId) return setError('Please select a user')
     if (!giveCompany && !giveAllProjects && selectedProjects.size === 0)
-      return setError('يرجى اختيار نطاق واحد على الأقل')
+      return setError('Please select at least one scope')
 
     setLoading(true)
 
@@ -55,11 +55,31 @@ export default function GrantScopeForm({
 
     if (result.error) return setError(result.error)
 
-    setSuccess(`تم منح ${result.granted} نطاق بنجاح${result.skipped ? ` (تم تخطي ${result.skipped} موجودة مسبقاً)` : ''}`)
+    setSuccess(`Granted ${result.granted} scope(s)${result.skipped ? ` (${result.skipped} already existed)` : ''}`)
+    setUserId('')
     setGiveCompany(false)
     setGiveAllProjects(false)
     setSelectedProjects(new Set())
     router.refresh()
+  }
+
+  // ── Empty state: all users already have scopes ────────────────
+  if (users.length === 0) {
+    return (
+      <div className="p-6">
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+          <svg className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div>
+            <p className="text-sm font-semibold text-amber-700">All users already have access scopes</p>
+            <p className="mt-1 text-sm text-amber-600">
+              Use the <strong>toggle</strong>, <strong>edit</strong>, or <strong>delete</strong> controls in the list below to modify existing access.
+            </p>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -75,12 +95,12 @@ export default function GrantScopeForm({
         {/* User selector */}
         <div className="flex flex-col gap-1.5 max-w-sm">
           <label className="text-sm font-semibold text-text-primary">
-            المستخدم <span className="text-danger">*</span>
+            User <span className="text-danger">*</span>
           </label>
           <CustomSelect
             value={userId}
             onChange={setUserId}
-            placeholder="— اختر مستخدماً —"
+            placeholder="— Select a user —"
             options={users.map(u => ({ value: u.id, label: u.display_name }))}
           />
         </div>
@@ -97,7 +117,7 @@ export default function GrantScopeForm({
             />
             <div>
               <div className="text-sm font-semibold text-text-primary">الشركة الرئيسية</div>
-              <div className="text-xs text-text-secondary">وصول للوحة تحكم الشركة والبيانات المركزية</div>
+              <div className="text-xs text-text-secondary">Company dashboard and central data</div>
             </div>
           </label>
 
@@ -114,7 +134,7 @@ export default function GrantScopeForm({
             />
             <div>
               <div className="text-sm font-semibold text-text-primary">جميع المشاريع</div>
-              <div className="text-xs text-text-secondary">وصول تلقائي لكل المشاريع الحالية والمستقبلية</div>
+              <div className="text-xs text-text-secondary">Access to all current and future projects</div>
             </div>
           </label>
 
@@ -123,11 +143,11 @@ export default function GrantScopeForm({
             <div>
               <div className="px-5 py-2 bg-background-secondary/40 border-b border-border">
                 <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">
-                  مشاريع محددة
+                  Selected projects
                 </span>
               </div>
               {projects.length === 0 ? (
-                <div className="px-5 py-4 text-sm text-text-secondary italic">لا توجد مشاريع متاحة</div>
+                <div className="px-5 py-4 text-sm text-text-secondary italic">No projects available</div>
               ) : (
                 <div className="divide-y divide-border/50 max-h-56 overflow-y-auto">
                   {projects.map(p => (
@@ -161,7 +181,7 @@ export default function GrantScopeForm({
             disabled={loading}
             className="rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm"
           >
-            {loading ? 'جاري المنح...' : 'منح النطاقات المحددة'}
+            {loading ? 'Granting…' : 'Grant selected scopes'}
           </button>
         </div>
       </form>

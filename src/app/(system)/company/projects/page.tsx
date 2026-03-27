@@ -1,5 +1,5 @@
 import { getCompany, getProjects } from '@/lib/projects'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default async function ProjectsPage() {
-  await requireAuth()
+  await requirePermission('projects', 'view')
   const projects = await getProjects()
 
   return (

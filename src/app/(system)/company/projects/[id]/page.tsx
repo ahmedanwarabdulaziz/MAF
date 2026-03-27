@@ -1,5 +1,5 @@
 import { getProject } from '@/lib/projects'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
@@ -22,7 +22,7 @@ const ROLE_LABELS: Record<string, string> = {
 interface Props { params: { id: string } }
 
 export default async function ProjectDetailPage({ params }: Props) {
-  await requireAuth()
+  await requirePermission('projects', 'view')
   const project = await getProject(params.id)
   if (!project) notFound()
 

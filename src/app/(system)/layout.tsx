@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase-server";
+import { getEffectiveModuleKeys, getUserScopes, UserScope } from "@/lib/permissions";
 import SidebarNav from "./SidebarNav";
 import HeaderNav from "./HeaderNav";
 import SettingsMenu from "./SettingsMenu";
@@ -34,10 +35,18 @@ export default async function SystemLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [user, projects] = await Promise.all([
-    getSystemUser(),
+  const user = await getSystemUser();
+
+  // Load effective permissions and scopes in parallel with projects
+  const [projects, allowedModules, userScopes] = await Promise.all([
     getActiveProjects(),
+    getEffectiveModuleKeys(user!.id),
+    getUserScopes(user!.id),
   ]);
+
+  // Convert Set to Array for serialisation into Client Components
+  const allowedModulesArray = Array.from(allowedModules);
+  const isSuperAdmin = user?.is_super_admin ?? false;
 
   return (
     <div className="flex min-h-screen">
@@ -50,11 +59,14 @@ export default async function SystemLayout({
         </div>
 
         <div className="flex-1 overflow-hidden px-3 py-3">
-          <SidebarNav isSuperAdmin={user?.is_super_admin || false} />
+          <SidebarNav
+            isSuperAdmin={isSuperAdmin}
+            allowedModules={allowedModulesArray}
+          />
         </div>
 
         {/* Settings gear — Super Admin only, sits above user footer */}
-        {user?.is_super_admin && <SettingsMenu />}
+        {isSuperAdmin && <SettingsMenu />}
 
         {/* User profile footer */}
         <div className="border-t border-white/10 px-4 py-4 flex items-center gap-3">
@@ -65,7 +77,7 @@ export default async function SystemLayout({
             <div className="truncate text-sm font-medium text-white">
               {user?.display_name ?? "مستخدم"}
             </div>
-            {user?.is_super_admin && (
+            {isSuperAdmin && (
               <div className="text-xs text-white/50">مدير النظام</div>
             )}
           </div>
@@ -78,7 +90,11 @@ export default async function SystemLayout({
         <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6 shadow-sm">
           {/* Project / Company navigation tags */}
           <div className="flex-1 overflow-x-auto">
-            <HeaderNav projects={projects} />
+            <HeaderNav
+              projects={projects}
+              userScopes={userScopes}
+              isSuperAdmin={isSuperAdmin}
+            />
           </div>
 
           <div className="flex items-center gap-6 shrink-0 mr-4">

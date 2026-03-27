@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 
 export default async function ProjectTransfersPage({
@@ -7,7 +7,7 @@ export default async function ProjectTransfersPage({
 }: {
   params: { id: string }
 }) {
-  await requireAuth()
+  await requirePermission('project_warehouse', 'view')
   const supabase = createClient()
 
   // Find transfers where source or destination belongs to this project

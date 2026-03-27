@@ -1,10 +1,10 @@
-import { requireAuth } from '@/lib/auth'
+import { requirePermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase-server'
 import WarehouseForm from './warehouse-form'
 import { getMainCompanyId } from '@/actions/warehouse'
 
 export default async function NewWarehousePage() {
-  await requireAuth()
+  await requirePermission('main_warehouse', 'view')
   
   const supabase = createClient()
   const companyId = await getMainCompanyId()
