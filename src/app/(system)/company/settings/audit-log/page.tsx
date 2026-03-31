@@ -5,6 +5,8 @@ import AuditDateFilter from './AuditDateFilter'
 import DeleteAllLogsButton from './DeleteAllLogsButton'
 
 const ACTION_LABELS: Record<string, string> = {
+  // Projects
+  create_project: 'إنشاء مشروع',
   // Access / Settings
   grant_scope:               'منح نطاق وصول',
   grant_scope_bulk:          'منح نطاقات متعددة',
@@ -27,6 +29,7 @@ const ACTION_LABELS: Record<string, string> = {
   account_updated:   'تعديل حساب مالي',
   funds_transferred: 'تحويل أموال',
   manual_deposit:    'إيداع يدوي',
+  funds_withdrawn:   'سحب أموال',
   // Certificates / Agreements
   certificate_created:   'إنشاء مستخلص',
   certificate_submitted: 'تقديم مستخلص',
@@ -40,12 +43,15 @@ const ACTION_LABELS: Record<string, string> = {
   payment_created:  'تسجيل دفعة صرف',
   expense_created:  'تسجيل مصروف نثري',
   expense_approved: 'تحديث حالة مصروف',
+  expense_updated:  'تعديل مصروف',
+  expense_attachment_updated: 'تغيير مرفق المصروف',
   // Misc
   system_check: 'فحص النظام',
 }
 
 const ACTION_COLORS: Record<string, string> = {
   // green — creation
+  create_project: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   pr_created: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   invoice_created: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   certificate_created: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -75,14 +81,18 @@ const ACTION_COLORS: Record<string, string> = {
   funds_transferred: 'bg-amber-50 text-amber-700 border-amber-200',
   update_permission_matrix: 'bg-amber-50 text-amber-700 border-amber-200',
   update_user: 'bg-amber-50 text-amber-700 border-amber-200',
-  // red — revoke / deactivate
+  expense_updated: 'bg-amber-50 text-amber-700 border-amber-200',
+  expense_attachment_updated: 'bg-amber-50 text-amber-700 border-amber-200',
+  // red — revoke / deactivate / withdraw
   revoke_scope: 'bg-red-50 text-red-700 border-red-200',
   deactivate_user: 'bg-red-50 text-red-700 border-red-200',
+  funds_withdrawn: 'bg-red-50 text-red-700 border-red-200',
   // grey
   system_check: 'bg-slate-50 text-slate-500 border-slate-200',
 }
 
 const ENTITY_LABELS: Record<string, string> = {
+  project:                   'المشروعات',
   purchase_request:          'طلبات الشراء',
   supplier_invoice:          'فواتير الموردين',
   subcontractor_certificate: 'المستخلصات',
@@ -150,6 +160,16 @@ function getDateRange(period: string, dateFrom?: string, dateTo?: string): { fro
 
 function MetaDetail({ meta }: { meta: Record<string, unknown> }) {
   const LABELS: Record<string, string> = {
+    // Projects
+    project_code:              'رمز المشروع',
+    arabic_name:               'اسم المشروع',
+    english_name:              'الاسم الإنجليزي',
+    status:                    'الحالة',
+    project_onboarding_type:   'نوع الإدراج',
+    location:                  'الموقع',
+    start_date:                'تاريخ البدء',
+    expected_end_date:         'تاريخ الانتهاء المتوقع',
+    estimated_contract_value:  'القيمة التقديرية للعقد',
     // Access / Settings
     target_user:    'المستخدم المستهدف',
     granted_count:  'النطاقات الممنوحة',
@@ -158,7 +178,6 @@ function MetaDetail({ meta }: { meta: Record<string, unknown> }) {
     scope_type:     'نوع النطاق',
     project:        'المشروع',
     group_key:      'مفتاح المجموعة',
-    arabic_name:    'الاسم',
     assigned_count: 'عدد الصلاحيات',
     scope_id:       'معرف النطاق',
     // Procurement
@@ -189,6 +208,9 @@ function MetaDetail({ meta }: { meta: Record<string, unknown> }) {
     transfer_id:  'معرف إذن التحويل',
     item_code:    'كود الصنف',
     action:       'الإجراء',
+    reference_type: 'نوع المرجع',
+    payment_voucher_id: 'معرف سند الدفع',
+    expense_id: 'معرف المصروف',
   }
   const entries = Object.entries(meta).filter(([, v]) => v !== null && v !== undefined)
   if (!entries.length) return null

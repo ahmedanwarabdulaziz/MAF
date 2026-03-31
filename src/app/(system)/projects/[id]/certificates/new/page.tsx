@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getSubcontractAgreements } from '@/actions/agreements'
-import { createDraftCertificate } from '@/actions/certificates'
+import { createDraftCertificate, getNextCertificateCode, getLastSubcontractorCertEndDate } from '@/actions/certificates'
 import DatePicker from '@/components/DatePicker'
 
 export default function NewCertificatePage({ params }: { params: { id: string } }) {
@@ -23,6 +23,7 @@ export default function NewCertificatePage({ params }: { params: { id: string } 
     period_to: '',
     notes: ''
   })
+  const [lastEndDate, setLastEndDate] = useState<string | null>(null)
 
   useEffect(() => {
     async function init() {
@@ -39,8 +40,51 @@ export default function NewCertificatePage({ params }: { params: { id: string } 
     init()
   }, [params.id])
 
+  useEffect(() => {
+    async function loadConfig() {
+      if (!formData.subcontract_agreement_id) {
+        setFormData(prev => ({ ...prev, certificate_no: '' }))
+        setLastEndDate(null)
+        return
+      }
+      try {
+        const nextCode = await getNextCertificateCode(formData.subcontract_agreement_id)
+        setFormData(prev => ({ ...prev, certificate_no: nextCode }))
+
+        const selectedAgg = agreements.find(a => a.id === formData.subcontract_agreement_id)
+        if (selectedAgg) {
+          const lastEnd = await getLastSubcontractorCertEndDate(params.id, selectedAgg.subcontractor_party_id)
+          setLastEndDate(lastEnd)
+          if (lastEnd) {
+             const nextDay = new Date(lastEnd)
+             nextDay.setDate(nextDay.getDate() + 1)
+             setFormData(prev => ({ ...prev, period_from: nextDay.toISOString().split('T')[0] }))
+          }
+        }
+      } catch (err) {
+        console.error(err)
+      }
+    }
+    loadConfig()
+  }, [formData.subcontract_agreement_id, agreements, params.id])
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    if (formData.period_from && formData.period_to) {
+      if (formData.period_from > formData.period_to) {
+        setError('تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية.')
+        return
+      }
+    }
+
+    if (formData.period_from && lastEndDate) {
+      if (new Date(formData.period_from) <= new Date(lastEndDate)) {
+        setError(`تاريخ البداية يتداخل مع المستخلص السابق الذي ينتهي في ${lastEndDate}. يجب أن يبدأ بعده.`)
+        return
+      }
+    }
+
     setSaving(true)
     setError(null)
 
@@ -118,8 +162,8 @@ export default function NewCertificatePage({ params }: { params: { id: string } 
                   required
                   value={formData.certificate_no}
                   onChange={e => setFormData({ ...formData, certificate_no: e.target.value })}
-                  placeholder="مثال: CERT-001"
-                  className="rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-primary"
+                  placeholder="سيتم توليده تلقائياً (يمكن تعديله)..."
+                  className="rounded-lg border border-border bg-white px-3 py-2 text-sm font-bold text-primary tracking-widest outline-none focus:border-primary"
                   dir="ltr"
                 />
               </div>
@@ -133,18 +177,20 @@ export default function NewCertificatePage({ params }: { params: { id: string } 
               </div>
 
               <div className="flex flex-col gap-1.5 border-t border-border pt-4 md:col-span-2">
-                <h3 className="text-sm font-bold text-text-secondary mb-2">الفترة الزمنية للأعمال المنجزة</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-text-primary">من تاريخ</label>
+                <h3 className="text-sm font-bold text-text-secondary mb-2">الفترة الزمنية للأعمال المنجزة <span className="text-danger">*</span></h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 z-10">
+                  <div className="flex flex-col gap-1.5 z-20">
+                    <label className="text-sm font-medium text-text-primary">من تاريخ <span className="text-danger">*</span></label>
                     <DatePicker
+                      required
                       value={formData.period_from}
                       onChange={val => setFormData({ ...formData, period_from: val })}
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-text-primary">إلى تاريخ</label>
+                  <div className="flex flex-col gap-1.5 z-10">
+                    <label className="text-sm font-medium text-text-primary">إلى تاريخ <span className="text-danger">*</span></label>
                     <DatePicker
+                      required
                       value={formData.period_to}
                       onChange={val => setFormData({ ...formData, period_to: val })}
                     />

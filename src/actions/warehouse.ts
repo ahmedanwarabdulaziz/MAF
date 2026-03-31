@@ -1,25 +1,52 @@
 'use server'
 
 import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { writeAuditLog } from '@/lib/audit'
 
 export async function getMainCompanyId() {
-  const supabase = createClient()
-  const { data } = await supabase.from('companies').select('id').eq('short_code', 'MAIN').single()
-  return data?.id
+  const supabase = createAdminClient()
+  // Try to find MAIN short_code, or fallback to the first active company
+  const { data } = await supabase.from('companies').select('id').eq('short_code', 'MAIN').maybeSingle()
+  if (data?.id) return data.id
+  
+  const { data: firstActive } = await supabase.from('companies').select('id').eq('is_active', true).limit(1).single()
+  return firstActive?.id
 }
 
 // ITEM GROUPS
 export async function createItemGroup(data: any) {
   const supabase = createClient()
+  
+  if (!data.company_id) {
+    data.company_id = await getMainCompanyId()
+    if (!data.company_id) throw new Error("لم يتم العثور على أي شركة نشطة لربط مجموعة الأصناف بها.")
+  }
+
   const { data: result, error } = await supabase
     .from('item_groups')
     .insert(data)
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    let msg = error.message
+    if (error.code === '23502') {
+      msg = `Missing required field (NOT NULL violation). Details: ${JSON.stringify(error)}`
+    }
+    console.error('createItemGroup DB Error:', error)
+    throw new Error(msg)
+  }
+
+  await writeAuditLog({
+    action: 'item_group_created',
+    entity_type: 'item_group',
+    entity_id: result.id,
+    description: `إضافة مجموعة أصناف: ${data.arabic_name}`,
+    metadata: { group_code: data.group_code, arabic_name: data.arabic_name }
+  })
+
   revalidatePath('/company/main_warehouse/item-groups')
   return result
 }
@@ -34,6 +61,15 @@ export async function updateItemGroup(id: string, data: any) {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'item_group_updated',
+    entity_type: 'item_group',
+    entity_id: id,
+    description: `تعديل مجموعة أصناف: ${result.arabic_name}`,
+    metadata: { group_code: result.group_code, arabic_name: result.arabic_name, is_active: result.is_active }
+  })
+
   revalidatePath('/company/main_warehouse/item-groups')
   return result
 }
@@ -99,6 +135,43 @@ export async function updateItem(id: string, data: any) {
 // WAREHOUSES
 export async function createWarehouse(data: any) {
   const supabase = createClient()
+
+  if (!data.warehouse_code || data.warehouse_code === 'تلقائي' || data.warehouse_code.startsWith('WH-')) {
+    let codeAssigned = false
+    let retries = 50 // fast forward through up to 50 legacy manually-inserted numbers
+
+    while (retries > 0) {
+      const { data: nextCode, error: seqErr } = await supabase.rpc('get_next_document_no', { 
+        p_company_id: data.company_id, 
+        p_doc_type: 'warehouses', 
+        p_prefix: 'WH' 
+      })
+
+      if (seqErr || !nextCode) {
+        throw new Error('Failed to generate warehouse sequence number.')
+      }
+
+      // Verify it doesn't already exist from old manual entries
+      const { data: existing } = await supabase
+        .from('warehouses')
+        .select('id')
+        .eq('company_id', data.company_id)
+        .eq('warehouse_code', nextCode)
+        .maybeSingle()
+
+      if (!existing) {
+        data.warehouse_code = nextCode
+        codeAssigned = true
+        break
+      }
+      retries--
+    }
+
+    if (!codeAssigned) {
+      throw new Error('تعذر إيجاد كود تسلسلي متاح للمخزن.')
+    }
+  }
+
   const { data: result, error } = await supabase
     .from('warehouses')
     .insert(data)
@@ -106,6 +179,14 @@ export async function createWarehouse(data: any) {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'CREATE',
+    entity_type: 'warehouses',
+    entity_id: result.id,
+    description: `إضافة مخزن جديد: ${data.warehouse_code} - ${data.arabic_name}`
+  })
+
   revalidatePath('/company/main_warehouse/warehouses')
   return result
 }
@@ -120,6 +201,14 @@ export async function updateWarehouse(id: string, data: any) {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'UPDATE',
+    entity_type: 'warehouses',
+    entity_id: id,
+    description: `تعديل بيانات المخزن: ${result.warehouse_code} - ${result.arabic_name}`
+  })
+
   revalidatePath('/company/main_warehouse/warehouses')
   return result
 }
@@ -166,4 +255,101 @@ export async function createWarehouseTransfer(data: {
   revalidatePath('/company/main_warehouse/transfers')
   revalidatePath('/projects/[projectId]/project_warehouse/transfers')
   return headerResult
+}
+
+// DISPATCH TRANSFER (Step 1)
+export async function dispatchTransfer(transferId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) throw new Error('يرجى تسجيل الدخول أولاً')
+
+  // Execute the RPC for dispatching
+  const { data, error } = await supabase
+    .rpc('dispatch_warehouse_transfer', {
+      p_transfer_id: transferId
+    })
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  const result = data as { ok: boolean; error?: string; message?: string }
+  if (!result.ok) throw new Error(result.error ?? 'فشل صرف الإذن')
+
+  await writeAuditLog({
+    action: 'warehouse_transfer_dispatched',
+    entity_type: 'warehouse_transfer',
+    entity_id: transferId,
+    description: `صرف إذن تحويل (بضاعة في الطريق)`,
+    metadata: { transfer_id: transferId }
+  })
+
+  revalidatePath('/company/main_warehouse/transfers')
+  revalidatePath('/projects/[projectId]/project_warehouse/transfers')
+  return result
+}
+
+// RECEIVE TRANSFER (Step 2)
+export async function receiveTransfer(transferId: string) {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  if (!user) throw new Error('يرجى تسجيل الدخول أولاً')
+
+  // Execute the RPC for receiving
+  const { data, error } = await supabase
+    .rpc('receive_warehouse_transfer', {
+      p_transfer_id: transferId
+    })
+    .single()
+
+  if (error) throw new Error(error.message)
+
+  const result = data as { ok: boolean; error?: string; message?: string }
+  if (!result.ok) throw new Error(result.error ?? 'فشل استلام الإذن')
+
+  await writeAuditLog({
+    action: 'warehouse_transfer_received',
+    entity_type: 'warehouse_transfer',
+    entity_id: transferId,
+    description: `استلام إذن تحويل وإضافته للأرصدة`,
+    metadata: { transfer_id: transferId }
+  })
+
+  revalidatePath('/company/main_warehouse/transfers')
+  revalidatePath('/projects/[projectId]/project_warehouse/transfers')
+  return result
+}
+
+// STOCK BALANCE SUMMARY
+export async function getWarehouseStock(warehouseId: string) {
+  if (!warehouseId) return []
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('stock_balances')
+    .select(`
+      id, quantity_on_hand, total_value, weighted_avg_cost, last_movement_at,
+      item:items(item_code, arabic_name)
+    `)
+    .eq('warehouse_id', warehouseId)
+    .gt('quantity_on_hand', 0)
+    .order('last_movement_at', { ascending: false })
+    
+  if (error) {
+    console.error('Error fetching stock:', error)
+  }
+  return data || []
+}
+
+// SINGLE STOCK BALANCE
+export async function getAvailableStock(warehouseId: string, itemId: string) {
+  if (!warehouseId || !itemId) return 0
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('stock_balances')
+    .select('quantity_on_hand')
+    .eq('warehouse_id', warehouseId)
+    .eq('item_id', itemId)
+    .maybeSingle()
+  return data?.quantity_on_hand || 0
 }

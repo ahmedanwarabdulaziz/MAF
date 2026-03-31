@@ -42,3 +42,15 @@ export function formatDateTimeSeconds(date: Date | string | null | undefined): s
   const ss = String(d.getSeconds()).padStart(2, '0')
   return `${dd}-${mm}-${yyyy} ${hh}:${min}:${ss}`
 }
+
+/**
+ * Format a number as Egyptian Pounds currency string
+ */
+export function formatCurrency(value: number | null | undefined): string {
+  if (value == null || isNaN(Number(value))) return '—'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'EGP',
+    minimumFractionDigits: 2,
+  }).format(Number(value))
+}

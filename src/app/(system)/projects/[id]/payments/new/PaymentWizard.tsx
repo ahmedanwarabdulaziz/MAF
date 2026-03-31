@@ -36,7 +36,7 @@ export default function PaymentWizard({ projectId, accounts, payablesQueue }: {
     party_id: '',
     financial_account_id: '',
     payment_date: new Date().toISOString().split('T')[0],
-    payment_method: 'transfer',
+    payment_method: 'bank_transfer',
     total_amount: '',
     receipt_reference_no: '',
     notes: ''
@@ -232,8 +232,8 @@ export default function PaymentWizard({ projectId, accounts, payablesQueue }: {
                         className="w-full rounded-md border border-border px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     >
                         <option value="cash">نقداً (نقدية بالصندوق)</option>
-                        <option value="check">شيك بنكي</option>
-                        <option value="transfer">تحويل بنكي مستندي</option>
+                        <option value="cheque">شيك بنكي</option>
+                        <option value="bank_transfer">تحويل بنكي مستندي</option>
                     </select>
                 </div>
             </div>

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import { transferFunds } from '@/actions/treasury'
 import DatePicker from '@/components/DatePicker'
 
-export default function TransferForm({ accounts }: { accounts: any[] }) {
+export default function TransferForm({ accounts, returnPath = '/company/treasury' }: { accounts: any[], returnPath?: string }) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,7 +50,7 @@ export default function TransferForm({ accounts }: { accounts: any[] }) {
         transfer_date: formData.transfer_date,
         notes: formData.notes
       })
-      router.push('/company/treasury')
+      router.push(returnPath)
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء تنفيذ التحويل')
       setLoading(false)
@@ -60,7 +60,7 @@ export default function TransferForm({ accounts }: { accounts: any[] }) {
   return (
     <div className="max-w-3xl space-y-6">
       <div className="mb-4 flex items-center gap-2 text-sm text-text-secondary">
-        <Link href="/company/treasury" className="hover:text-primary">الخزينة والحسابات</Link>
+        <Link href={returnPath} className="hover:text-primary">الخزينة والحسابات</Link>
         <span>←</span>
         <span className="text-text-primary font-medium">تحويل داخلي</span>
       </div>
@@ -161,7 +161,7 @@ export default function TransferForm({ accounts }: { accounts: any[] }) {
 
         <div className="flex justify-end gap-3 border-t border-border pt-6">
             <Link
-                href="/company/treasury"
+                href={returnPath}
                 className="rounded-md px-4 py-2 text-sm font-medium text-text-secondary hover:bg-black/5"
             >
                 إلغاء

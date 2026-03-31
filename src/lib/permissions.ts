@@ -17,7 +17,7 @@ export interface UserScope {
  * Returns the full set of allowed (module, action) pairs for a user.
  * Super Admins bypass the permission table — they get everything.
  */
-export async function getEffectivePermissions(userId: string): Promise<EffectivePermission[]> {
+export async function getEffectivePermissions(userId: string, context?: { projectId?: string; warehouseId?: string, includeAllScopes?: boolean }): Promise<EffectivePermission[]> {
   const supabase = createClient()
 
   // Check super admin first
@@ -34,11 +34,24 @@ export async function getEffectivePermissions(userId: string): Promise<Effective
   }
 
   // Load active group assignments for this user
-  const { data: groupAssignments } = await supabase
+  let query = supabase
     .from('user_permission_group_assignments')
     .select('permission_group_id')
     .eq('user_id', userId)
     .eq('is_active', true)
+
+  if (context?.includeAllScopes) {
+    // No additional filtering on scope_type, we get everything
+  } else if (context?.projectId) {
+    query = query.or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_project,project_id.eq.${context.projectId})`)
+  } else if (context?.warehouseId) {
+    query = query.or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_warehouse,warehouse_id.eq.${context.warehouseId})`)
+  } else {
+    // Global context requires global scopes
+    query = query.in('scope_type', ['main_company', 'all_projects'])
+  }
+
+  const { data: groupAssignments } = await query
 
   if (!groupAssignments?.length) return []
 
@@ -70,7 +83,8 @@ export async function getEffectivePermissions(userId: string): Promise<Effective
 export async function hasPermission(
   userId: string,
   moduleKey: string,
-  actionKey: string
+  actionKey: string,
+  context?: { projectId?: string; warehouseId?: string }
 ): Promise<boolean> {
   const supabase = createClient()
 
@@ -83,11 +97,21 @@ export async function hasPermission(
   if (profile?.is_super_admin) return true
 
   // Check via group assignments
-  const { data: groupAssignments } = await supabase
+  let query = supabase
     .from('user_permission_group_assignments')
     .select('permission_group_id')
     .eq('user_id', userId)
     .eq('is_active', true)
+
+  if (context?.projectId) {
+    query = query.or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_project,project_id.eq.${context.projectId})`)
+  } else if (context?.warehouseId) {
+    query = query.or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_warehouse,warehouse_id.eq.${context.warehouseId})`)
+  } else {
+    query = query.in('scope_type', ['main_company', 'all_projects'])
+  }
+
+  const { data: groupAssignments } = await query
 
   if (!groupAssignments?.length) return false
 
@@ -110,13 +134,23 @@ export async function hasPermission(
  */
 export async function getUserScopes(userId: string): Promise<UserScope[]> {
   const supabase = createClient()
+  // Use user_permission_group_assignments since that is our new single source of truth for scops and roles
   const { data } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .select('scope_type, project_id, warehouse_id')
     .eq('user_id', userId)
     .eq('is_active', true)
 
-  return (data ?? []) as UserScope[]
+  // Needs deduplication as a user might have multiple roles on the same project
+  const uniqueScopes = new Map<string, UserScope>()
+  for (const s of (data ?? [])) {
+    const key = `${s.scope_type}-${s.project_id}-${s.warehouse_id}`
+    if (!uniqueScopes.has(key)) {
+      uniqueScopes.set(key, s as UserScope)
+    }
+  }
+
+  return Array.from(uniqueScopes.values())
 }
 
 /**
@@ -124,8 +158,8 @@ export async function getUserScopes(userId: string): Promise<UserScope[]> {
  * Super Admins get all modules. Regular users get only assigned modules.
  * Use this for fast sidebar/nav filtering.
  */
-export async function getEffectiveModuleKeys(userId: string): Promise<Set<string>> {
-  const perms = await getEffectivePermissions(userId)
+export async function getEffectiveModuleKeys(userId: string, context?: { projectId?: string; warehouseId?: string; includeAllScopes?: boolean }): Promise<Set<string>> {
+  const perms = await getEffectivePermissions(userId, context)
   return new Set(perms.map(p => p.module_key))
 }
 
@@ -143,11 +177,11 @@ export async function hasProjectScope(userId: string, projectId: string): Promis
   if (profile?.is_super_admin) return true
 
   const { data } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .select('id')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .or(`scope_type.eq.all_projects,and(scope_type.eq.selected_project,project_id.eq.${projectId})`)
+    .or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_project,project_id.eq.${projectId})`)
     .limit(1)
 
   return (data?.length ?? 0) > 0

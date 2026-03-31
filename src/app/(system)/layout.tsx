@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getCompany } from "@/lib/projects";
 import { createClient } from "@/lib/supabase-server";
 import { getEffectiveModuleKeys, getUserScopes, UserScope } from "@/lib/permissions";
 import SidebarNav from "./SidebarNav";
@@ -25,7 +26,7 @@ async function getActiveProjects() {
   const { data } = await supabase
     .from("projects")
     .select("id, arabic_name, project_code")
-    .in("status", ["active", "in_progress", "ongoing"])
+    .is("archived_at", null)
     .order("created_at", { ascending: true });
   return data ?? [];
 }
@@ -37,11 +38,16 @@ export default async function SystemLayout({
 }) {
   const user = await getSystemUser();
 
-  // Load effective permissions and scopes in parallel with projects
-  const [projects, allowedModules, userScopes] = await Promise.all([
+  if (!user) {
+    redirect("/login");
+  }
+
+  // Load effective permissions and scopes in parallel with projects and company data
+  const [projects, allowedModules, userScopes, company] = await Promise.all([
     getActiveProjects(),
-    getEffectiveModuleKeys(user!.id),
-    getUserScopes(user!.id),
+    getEffectiveModuleKeys(user.id, { includeAllScopes: true }),
+    getUserScopes(user.id),
+    getCompany(),
   ]);
 
   // Convert Set to Array for serialisation into Client Components
@@ -62,6 +68,7 @@ export default async function SystemLayout({
           <SidebarNav
             isSuperAdmin={isSuperAdmin}
             allowedModules={allowedModulesArray}
+            companyName={company?.arabic_name}
           />
         </div>
 
@@ -94,6 +101,7 @@ export default async function SystemLayout({
               projects={projects}
               userScopes={userScopes}
               isSuperAdmin={isSuperAdmin}
+              companyName={company?.arabic_name}
             />
           </div>
 
@@ -118,7 +126,7 @@ function LogoutButton() {
     <form action="/api/auth/logout" method="post">
       <button
         type="submit"
-        className="text-white/50 hover:text-white transition-colors text-xs"
+        className="text-white/50 hover:text-white focus:outline-none focus-visible:text-white focus-visible:underline focus-visible:ring-2 focus-visible:ring-white/50 rounded px-1 transition-colors text-xs"
         title="تسجيل الخروج"
       >
         خروج

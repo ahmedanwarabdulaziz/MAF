@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import EditScopeButton from './EditScopeButton'
 import { toggleAccessScopeAction, deleteAccessScopeAction } from './actions'
 import AddScopeButton from './AddScopeButton'
+import EffectivePermissionsModal from '@/components/modals/EffectivePermissionsModal'
 
 const SCOPE_LABELS: Record<string, string> = {
   main_company: 'الشركة الرئيسية',
@@ -34,6 +35,7 @@ interface Scope {
   granted_at: string | null
   user: { display_name: string; email?: string } | null
   project: { arabic_name: string; project_code: string } | null
+  role: { arabic_name: string } | null
 }
 
 interface ScopeCardProps {
@@ -65,12 +67,17 @@ function ScopeCard({ scope, projects }: ScopeCardProps) {
     } ${(isPendingToggle || isPendingDelete) ? 'opacity-50' : ''}`}>
 
       {/* Top row: badge + toggle */}
-      <div className="flex items-center justify-between gap-2">
-        <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-          SCOPE_COLORS[scope.scope_type] ?? 'bg-border/30 text-text-secondary border-border'
-        } ${!scope.is_active ? 'opacity-60' : ''}`}>
-          {SCOPE_LABELS[scope.scope_type] ?? scope.scope_type}
-        </span>
+      <div className="flex items-center justify-between gap-2 border-b border-border/50 pb-2">
+        <div className="flex flex-col gap-1">
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold w-fit ${
+            SCOPE_COLORS[scope.scope_type] ?? 'bg-border/30 text-text-secondary border-border'
+          } ${!scope.is_active ? 'opacity-60' : ''}`}>
+            {SCOPE_LABELS[scope.scope_type] ?? scope.scope_type}
+          </span>
+          <span className="text-sm font-bold text-text-primary px-1">
+            {scope.role?.arabic_name ?? 'بدون قالب وظيفي'}
+          </span>
+        </div>
 
         {/* Toggle switch */}
         <button
@@ -127,10 +134,12 @@ function ScopeCard({ scope, projects }: ScopeCardProps) {
 interface Props {
   scopes: Scope[]
   projects: Project[]
+  roleTemplates: { id: string; arabic_name: string }[]
 }
 
-export default function ScopesList({ scopes, projects }: Props) {
+export default function ScopesList({ scopes, projects, roleTemplates }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const [modalUser, setModalUser] = useState<{ id: string; name: string } | null>(null)
 
   // Group by user_id
   const groups: { uid: string; user: Scope['user']; rows: Scope[] }[] = []
@@ -184,7 +193,21 @@ export default function ScopesList({ scopes, projects }: Props) {
                 {user?.email && <div className="text-xs text-text-secondary mt-0.5" dir="ltr">{user.email}</div>}
               </div>
               <div className="shrink-0 flex items-center gap-3">
-                <AddScopeButton userId={uid} userName={user?.display_name ?? 'Unknown'} projects={projects} />
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setModalUser({ id: uid, name: user?.display_name ?? 'Unknown' })
+                  }}
+                  className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-navy/5 px-3 py-1 text-xs font-semibold text-navy hover:bg-navy/10 transition-colors"
+                  title="استعراض الصلاحيات الفعلية للموظف"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  معاينة الصلاحيات
+                </button>
+                <AddScopeButton userId={uid} userName={user?.display_name ?? 'Unknown'} projects={projects} roleTemplates={roleTemplates} />
                 <span className="text-xs text-text-secondary">
                   <span className="font-semibold text-text-primary">{activeCount}</span> / {rows.length} active
                 </span>
@@ -194,7 +217,7 @@ export default function ScopesList({ scopes, projects }: Props) {
                       <span key={r.id} className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium ${
                         SCOPE_COLORS[r.scope_type] ?? 'bg-border/30 text-text-secondary border-border'
                       } ${!r.is_active ? 'opacity-40' : ''}`}>
-                        {r.scope_type === 'selected_project' && r.project ? r.project.project_code : SCOPE_LABELS[r.scope_type]}
+                        {r.role?.arabic_name ?? 'بدون قالب'} | {r.scope_type === 'selected_project' && r.project ? r.project.project_code : SCOPE_LABELS[r.scope_type]}
                       </span>
                     ))}
                     {rows.length > 3 && <span className="text-xs text-text-secondary">+{rows.length - 3}</span>}
@@ -220,6 +243,16 @@ export default function ScopesList({ scopes, projects }: Props) {
           </div>
         )
       })}
+      
+      {modalUser && (
+        <EffectivePermissionsModal
+          userId={modalUser.id}
+          userName={modalUser.name}
+          projects={projects}
+          isOpen={true}
+          onClose={() => setModalUser(null)}
+        />
+      )}
     </div>
   )
 }

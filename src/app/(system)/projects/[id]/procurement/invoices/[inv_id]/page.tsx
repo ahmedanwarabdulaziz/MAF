@@ -20,6 +20,8 @@ export default function SupplierInvoiceDetails() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [confirmSignature, setConfirmSignature] = useState<'pm' | 'warehouse_manager' | null>(null)
 
   useEffect(() => {
     load()
@@ -62,6 +64,7 @@ export default function SupplierInvoiceDetails() {
   async function handleSaveLines() {
     setSaving(true)
     setError(null)
+    setSuccessMessage(null)
     try {
       let gross = 0
       lines.forEach(l => gross += l.line_net)
@@ -73,7 +76,7 @@ export default function SupplierInvoiceDetails() {
         net_amount: gross,
         lines: lines
       })
-      alert('تم حفظ تسعير وكميات الفاتورة بنجاح')
+      setSuccessMessage('تم حفظ تسعير وكميات الفاتورة بنجاح')
       await load()
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء حفظ الفاتورة')
@@ -84,11 +87,15 @@ export default function SupplierInvoiceDetails() {
 
   async function handleSubmitForReceipt() {
     if (!warehouseId) {
-      return alert('يجب تحديد مخزن للاستلام والتوريد')
+      setError('يجب تحديد مخزن للاستلام والتوريد')
+      return
     }
     setSaving(true)
+    setError(null)
+    setSuccessMessage(null)
     try {
       await submitInvoiceForReceipt(inv.id, projectId, warehouseId)
+      setSuccessMessage('تم إرسال الفاتورة للاستلام والتوريد بنجاح')
       await load()
     } catch (err: any) {
       setError(err.message)
@@ -97,12 +104,20 @@ export default function SupplierInvoiceDetails() {
     }
   }
 
-  async function handleConfirmSignature(role: 'pm' | 'warehouse_manager') {
-    if (!confirm('تأكيد التوقيع الإلكتروني على البضاعة؟ سيتم تحويلها عهدة.')) return
+  function handleConfirmSignature(role: 'pm' | 'warehouse_manager') {
+    setConfirmSignature(role)
+  }
+
+  async function executeConfirmSignature() {
+    if (!confirmSignature) return
+    const role = confirmSignature
+    setConfirmSignature(null)
     setSaving(true)
+    setError(null)
+    setSuccessMessage(null)
     try {
       await confirmReceipt(inv.id, projectId, role)
-      alert('تم اعتماد التوقيع بنجاح!')
+      setSuccessMessage('تم اعتماد التوقيع بنجاح!')
       await load()
     } catch (err: any) {
       setError(err.message)
@@ -176,10 +191,12 @@ export default function SupplierInvoiceDetails() {
               <span className="text-xs font-bold mb-2">أمين المخزن</span>
               {conf?.warehouse_manager_status === 'approved' ? (
                 <span className="text-sm font-bold text-success">✓ تم الاستلام</span>
-              ) : (
+              ) : inv.can_wh_approve ? (
                 <button onClick={() => handleConfirmSignature('warehouse_manager')} className="rounded bg-navy text-white px-3 py-1.5 text-xs font-semibold hover:bg-navy/80">
                   توقيع الاستلام
                 </button>
+              ) : (
+                <span className="text-xs text-text-secondary mt-1">ليس لديك صلاحية الاستلام</span>
               )}
             </div>
 
@@ -187,10 +204,12 @@ export default function SupplierInvoiceDetails() {
               <span className="text-xs font-bold mb-2">مدير المشروع / المهندس</span>
               {conf?.pm_status === 'approved' ? (
                 <span className="text-sm font-bold text-success">✓ تم الفحص والمطابقة</span>
-              ) : (
+              ) : inv.can_approve ? (
                 <button onClick={() => handleConfirmSignature('pm')} className="rounded bg-navy text-white px-3 py-1.5 text-xs font-semibold hover:bg-navy/80">
                   توقيع المطابقة
                 </button>
+              ) : (
+                <span className="text-xs text-text-secondary mt-1">ليس لديك صلاحية الاعتماد</span>
               )}
             </div>
           </div>
@@ -287,6 +306,58 @@ export default function SupplierInvoiceDetails() {
           </div>
         )}
       </div>
+      {/* Confirmation Dialog */}
+      {confirmSignature && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={() => setConfirmSignature(null)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-border">
+            <h3 className="text-xl font-bold text-navy mb-4 text-right">تأكيد توقيع الاستلام</h3>
+            <p className="text-text-secondary text-right mb-6">
+              تأكيد التوقيع الإلكتروني على البضاعة المستلمة؟ سيتم تحويلها لعهدتك في المخزن ولا يمكن التراجع عن ذلك.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmSignature(null)}
+                disabled={saving}
+                className="px-4 py-2 text-sm font-semibold rounded-lg border border-border text-text-secondary hover:bg-background-secondary transition-colors disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={executeConfirmSignature}
+                disabled={saving}
+                className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors disabled:opacity-50 flex items-center gap-2 bg-success hover:bg-success/90"
+              >
+                {saving ? 'جاري الاعتماد...' : 'نعم، أؤكد توقيعي'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success Dialog */}
+      {successMessage && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={() => setSuccessMessage(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-success animate-in zoom-in-95 duration-200">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-success/10 mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="h-8 w-8 text-success">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+              </svg>
+            </div>
+            <h3 className="text-xl font-bold text-center text-navy mb-2">نجاح!</h3>
+            <p className="text-center text-text-secondary mb-6">{successMessage}</p>
+            <div className="flex justify-center">
+              <button
+                onClick={() => setSuccessMessage(null)}
+                className="w-full rounded-lg bg-success px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-success/90 transition-colors"
+              >
+                موافق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

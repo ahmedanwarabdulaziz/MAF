@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getPurchaseRequestDetails, submitPurchaseRequest, approvePurchaseRequest } from '@/actions/procurement'
+import NewSupplierInvoiceDialog from '../../invoices/NewSupplierInvoiceDialog'
 // import { useAuth } from '@/components/AuthProvider'
 
 export default function PurchaseRequestDetails({ params }: { params: { id: string, pr_id: string } }) {
@@ -56,7 +57,7 @@ export default function PurchaseRequestDetails({ params }: { params: { id: strin
 
   const req = Array.isArray(pr.requester) ? pr.requester[0] : pr.requester
   const proj = Array.isArray(pr.project) ? pr.project[0] : pr.project
-  const canApprove = pr.status === 'pending_approval' // scope checked on server
+  const canApprove = pr.status === 'pending_approval' && pr.can_approve
 
   return (
     <div className="space-y-6 pb-24 mx-auto max-w-5xl">
@@ -72,7 +73,7 @@ export default function PurchaseRequestDetails({ params }: { params: { id: strin
             طلب شراء رقم: <span className="font-mono text-navy">{pr.request_no}</span>
           </h1>
           <p className="mt-1 text-sm text-text-secondary">
-            المشروع: {proj?.name} | مُقدم الطلب: {req?.full_name || 'غير محدد'}
+            المشروع: {proj?.name} | مُقدم الطلب: {req?.display_name || 'غير محدد'}
           </p>
         </div>
         
@@ -96,12 +97,17 @@ export default function PurchaseRequestDetails({ params }: { params: { id: strin
             </button>
           )}
           {pr.status === 'approved' && (
-            <Link
-              href={`/projects/${params.id}/procurement/invoices/new?pr_id=${pr.id}`}
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-            >
-              تحويل الطلب إلى فاتورة مورد
-            </Link>
+            <NewSupplierInvoiceDialog
+              projectId={params.id}
+              initialPrId={pr.id}
+              trigger={
+                <button
+                  className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
+                >
+                  تحويل الطلب إلى فاتورة مورد
+                </button>
+              }
+            />
           )}
         </div>
       </div>

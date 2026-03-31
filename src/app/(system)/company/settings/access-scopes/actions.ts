@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase-server'
 import { requireSuperAdmin } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { writeAuditLog } from '@/lib/audit'
+import { getEffectivePermissions } from '@/lib/permissions'
 
 export async function grantAccessScopeAction(formData: FormData) {
   await requireSuperAdmin()
@@ -63,6 +64,7 @@ export async function grantAccessScopeAction(formData: FormData) {
 
 export async function grantBulkScopesAction(
   userId: string,
+  roleTemplateId: string,
   scopes: { scope_type: string; project_id?: string }[]
 ) {
   await requireSuperAdmin()
@@ -72,22 +74,22 @@ export async function grantBulkScopesAction(
     return { error: 'بيانات غير مكتملة' }
   }
 
-  // Fetch all already-active scopes for this user
+  // Fetch all already-active scopes for this user with this template
   const { data: existing } = await supabase
-    .from('user_access_scopes')
-    .select('scope_type, project_id')
+    .from('user_permission_group_assignments')
+    .select('scope_type, project_id, permission_group_id')
     .eq('user_id', userId)
-    .eq('is_active', true)
 
   const existingKeys = new Set(
-    (existing ?? []).map(s => `${s.scope_type}:${s.project_id ?? ''}`)
+    (existing ?? []).map(s => `${s.permission_group_id}:${s.scope_type}:${s.project_id ?? ''}`)
   )
 
   // Filter out duplicates
   const toInsert = scopes
-    .filter(s => !existingKeys.has(`${s.scope_type}:${s.project_id ?? ''}`))
+    .filter(s => !existingKeys.has(`${roleTemplateId}:${s.scope_type}:${s.project_id ?? ''}`))
     .map(s => ({
       user_id: userId,
+      permission_group_id: roleTemplateId,
       scope_type: s.scope_type,
       project_id: s.project_id ?? null,
       is_active: true,
@@ -96,11 +98,11 @@ export async function grantBulkScopesAction(
   const skipped = scopes.length - toInsert.length
 
   if (toInsert.length === 0) {
-    return { error: 'جميع النطاقات المحددة ممنوحة مسبقاً لهذا المستخدم', skipped }
+    return { error: 'جميع النطاقات المحددة ممنوحة مسبقاً بهذا القالب الوظيفي', skipped }
   }
 
   const { error: insertError } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .insert(toInsert)
 
   if (insertError) {
@@ -128,11 +130,12 @@ export async function grantBulkScopesAction(
 
   await writeAuditLog({
     action: 'grant_scope_bulk',
-    entity_type: 'user_access_scope',
+    entity_type: 'user_permission_group_assignments',
     entity_id: userId,
-    description: `منح نطاقات وصول للمستخدم ${targetUser?.display_name ?? userId}`,
+    description: `تعيين الموظف ${targetUser?.display_name ?? userId} في فريق العمل`,
     metadata: {
       target_user: targetUser?.display_name ?? userId,
+      role_template_id: roleTemplateId,
       granted_count: toInsert.length,
       skipped_count: skipped,
       scopes: scopeLines,
@@ -148,18 +151,18 @@ export async function revokeAccessScopeAction(scopeId: string) {
 
   // Fetch scope details for rich audit log before revoking
   const { data: scopeRow } = await supabase
-    .from('user_access_scopes')
-    .select('user_id, scope_type, project_id')
+    .from('user_permission_group_assignments')
+    .select('user_id, scope_type, project_id, permission_group_id')
     .eq('id', scopeId)
     .maybeSingle()
 
   const { error } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .update({ is_active: false })
     .eq('id', scopeId)
 
   if (error) {
-    return { error: 'حدث خطأ أثناء إيقاف النطاق' }
+    return { error: 'حدث خطأ أثناء إيقاف التعيين' }
   }
 
   let revokeDesc = 'إلغاء نطاق وصول'
@@ -173,7 +176,7 @@ export async function revokeAccessScopeAction(scopeId: string) {
       meta.project = proj ? `${proj.arabic_name} (${proj.project_code})` : scopeRow.project_id
     }
     const scopeLabels: Record<string, string> = { main_company: 'الشركة الرئيسية', all_projects: 'جميع المشاريع', selected_project: 'مشروع محدد' }
-    revokeDesc = `إلغاء نطاق (${scopeLabels[scopeRow.scope_type] ?? scopeRow.scope_type}) للمستخدم ${u?.display_name ?? ''}`
+    revokeDesc = `إلغاء تعيين فريق (${scopeLabels[scopeRow.scope_type] ?? scopeRow.scope_type}) للموظف ${u?.display_name ?? ''}`
   }
 
   await writeAuditLog({
@@ -209,7 +212,7 @@ export async function updateAccessScopeAction(
   }
 
   const { error } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .update(updateData)
     .eq('id', scopeId)
 
@@ -219,7 +222,7 @@ export async function updateAccessScopeAction(
 
   // Fetch details for audit log
   const { data: updatedRow } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .select('user_id')
     .eq('id', scopeId)
     .maybeSingle()
@@ -255,13 +258,13 @@ export async function toggleAccessScopeAction(scopeId: string, activate: boolean
   const supabase = createClient()
 
   const { data: scopeRow } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .select('user_id, scope_type')
     .eq('id', scopeId)
     .maybeSingle()
 
   const { error } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .update({ is_active: activate })
     .eq('id', scopeId)
 
@@ -290,13 +293,13 @@ export async function deleteAccessScopeAction(scopeId: string) {
   const supabase = createClient()
 
   const { data: scopeRow } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .select('user_id, scope_type, project_id')
     .eq('id', scopeId)
     .maybeSingle()
 
   const { error } = await supabase
-    .from('user_access_scopes')
+    .from('user_permission_group_assignments')
     .delete()
     .eq('id', scopeId)
 
@@ -318,4 +321,39 @@ export async function deleteAccessScopeAction(scopeId: string) {
 
   revalidatePath('/company/settings/access-scopes')
   return { success: true }
+}
+
+export async function fetchUserPermissionsMatrix(userId: string, projectId?: string) {
+  await requireSuperAdmin()
+  const supabase = createClient()
+  const context = projectId ? { projectId } : undefined
+  const perms = await getEffectivePermissions(userId, context)
+
+  if (perms.length === 0) return []
+
+  const { data: registry } = await supabase
+    .from('permissions')
+    .select('module_key, module_name_ar, action_key, action_name_ar')
+
+  const registryMap = new Map<string, { mAr: string; aAr: string }>()
+  for (const r of registry ?? []) {
+    registryMap.set(`${r.module_key}:${r.action_key}`, { mAr: r.module_name_ar, aAr: r.action_name_ar })
+  }
+
+  // Group by module
+  const moduleMap = new Map<string, { label: string; actions: { key: string; label: string }[] }>()
+
+  for (const p of perms) {
+    const info = registryMap.get(`${p.module_key}:${p.action_key}`) || { mAr: p.module_key, aAr: p.action_key }
+    if (!moduleMap.has(p.module_key)) {
+      moduleMap.set(p.module_key, { label: info.mAr, actions: [] })
+    }
+    moduleMap.get(p.module_key)!.actions.push({ key: p.action_key, label: info.aAr })
+  }
+
+  return Array.from(moduleMap.entries()).map(([key, val]) => ({
+    key,
+    label: val.label,
+    actions: val.actions
+  })).sort((a, b) => a.label.localeCompare(b.label, 'ar'))
 }

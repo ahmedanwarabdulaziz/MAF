@@ -14,9 +14,10 @@ type Props = {
   projects: Project[]
   userScopes: UserScope[]
   isSuperAdmin: boolean
+  companyName?: string
 }
 
-export default function HeaderNav({ projects, userScopes, isSuperAdmin }: Props) {
+export default function HeaderNav({ projects, userScopes, isSuperAdmin, companyName }: Props) {
   const pathname = usePathname()
 
   // Determine active context
@@ -70,7 +71,7 @@ export default function HeaderNav({ projects, userScopes, isSuperAdmin }: Props)
         `}
       >
         <span className="text-[10px] opacity-60 font-mono">◉</span>
-        الشركة الرئيسية
+        {companyName || 'الشركة الرئيسية'}
       </Link>
 
       {/* Divider */}

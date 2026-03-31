@@ -20,7 +20,6 @@ import { createCompanyPurchaseInvoice } from '../actions'
 
 type Category = { id: string; arabic_name: string; category_code: string; parent_id: string | null }
 type Party    = { id: string; arabic_name: string }
-type Branch   = { id: string; arabic_name: string }
 type Warehouse = { id: string; arabic_name: string; warehouse_code: string }
 type Item     = { id: string; arabic_name: string; item_code: string; unit?: any }
 
@@ -51,12 +50,12 @@ function buildCategoryTree(cats: Category[]) {
 interface Props {
   categories: Category[]
   suppliers: Party[]
-  branches: Branch[]
   warehouses: Warehouse[]
   items: Item[]
+  costCenters: any[]
 }
 
-export default function PurchaseInvoiceForm({ categories, suppliers, branches, warehouses, items }: Props) {
+export default function PurchaseInvoiceForm({ categories, suppliers, warehouses, items }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -65,8 +64,6 @@ export default function PurchaseInvoiceForm({ categories, suppliers, branches, w
   const [supplierId, setSupplierId] = useState('')
   const [invoiceNo, setInvoiceNo] = useState('تلقائي')
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
-  const [expenseCategoryId, setExpenseCategoryId] = useState('')
-  const [branchId, setBranchId] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [taxRate, setTaxRate] = useState(0)
   const [discountAmount, setDiscountAmount] = useState(0)
@@ -119,9 +116,7 @@ export default function PurchaseInvoiceForm({ categories, suppliers, branches, w
     e.preventDefault()
     setError(null)
 
-    if (!supplierId) { setError('يرجى اختيار المورد'); return }
-    if (!invoiceNo)  { setError('يرجى إدخال رقم الفاتورة'); return }
-    if (invoiceType === 'general_expense' && !expenseCategoryId) { setError('يرجى اختيار قسم المصروف'); return }
+    if (invoiceType === 'stock_purchase' && !supplierId) { setError('يرجى اختيار المورد'); return }
     if (invoiceType === 'stock_purchase'  && !warehouseId)       { setError('يرجى اختيار المستودع'); return }
     if (lines.some(l => !l.description)) { setError('يرجى ادخال وصف لكل سطر'); return }
 
@@ -132,8 +127,7 @@ export default function PurchaseInvoiceForm({ categories, suppliers, branches, w
           invoice_no:          invoiceNo,
           invoice_date:        invoiceDate,
           invoice_type:        invoiceType,
-          expense_category_id: invoiceType === 'general_expense' ? expenseCategoryId || null : null,
-          branch_id:           branchId || null,
+          expense_category_id: null,
           warehouse_id:        invoiceType === 'stock_purchase' ? warehouseId || null : null,
           gross_amount:        grossAmount,
           tax_amount:          taxAmount,
@@ -225,37 +219,6 @@ export default function PurchaseInvoiceForm({ categories, suppliers, branches, w
           </div>
         </div>
 
-        {/* Conditional: General Expense → category + branch */}
-        {invoiceType === 'general_expense' && (
-          <div className="grid grid-cols-2 gap-4 pt-2">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">قسم المصروف *</label>
-              <select
-                value={expenseCategoryId}
-                onChange={e => setExpenseCategoryId(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- اختر القسم --</option>
-                {categoryTree.map(({ cat, depth }) => (
-                  <option key={cat.id} value={cat.id}>
-                    {'  '.repeat(depth)}{depth > 0 ? '└ ' : ''}{cat.arabic_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">الفرع (اختياري)</label>
-              <select
-                value={branchId}
-                onChange={e => setBranchId(e.target.value)}
-                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">-- بدون فرع --</option>
-                {branches.map(b => <option key={b.id} value={b.id}>{b.arabic_name}</option>)}
-              </select>
-            </div>
-          </div>
-        )}
 
         {/* Conditional: Stock Purchase → warehouse */}
         {invoiceType === 'stock_purchase' && (

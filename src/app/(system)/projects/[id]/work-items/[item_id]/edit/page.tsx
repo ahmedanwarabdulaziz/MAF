@@ -1,5 +1,5 @@
 import WorkItemForm from '@/components/forms/WorkItemForm'
-import { createClient } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase-server'
 import { notFound } from 'next/navigation'
 
 export default async function EditProjectWorkItemPage({ params }: { params: { id: string, "item_id": string } }) {

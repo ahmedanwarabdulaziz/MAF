@@ -4,13 +4,12 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase'
+import { logClientAction } from '@/actions/audit'
 
 const ROLE_OPTIONS = [
   { value: 'owner',         label: 'مالك' },
-  { value: 'subcontractor', label: 'مقاول من الباطن' },
-  { value: 'supplier',      label: 'مورد' },
-  { value: 'consultant',    label: 'مستشار' },
-  { value: 'other',         label: 'آخر' },
+  { value: 'subcontractor', label: 'مقاول' },
+  { value: 'supplier',      label: 'مورد' }
 ]
 
 interface Party {
@@ -113,6 +112,13 @@ export default function EditPartyForm({ party, backHref = '/company/parties' }: 
     for (const role of reactivateRoles) {
       await supabase.from('party_roles').update({ is_active: true }).eq('id', existingByType[role])
     }
+
+    await logClientAction({
+      action: 'UPDATE',
+      entity_type: 'parties',
+      entity_id: party.id,
+      description: `تم تعديل بيانات جهة التعامل: ${form.arabic_name.trim()} (${isActive ? 'نشط' : 'موقوف'})`
+    })
 
     setLoading(false)
     router.push(backHref)

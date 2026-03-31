@@ -1,6 +1,7 @@
 import { getCompany, getProjects } from '@/lib/projects'
 import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
+import AddProjectButton from './AddProjectButton'
 
 const STATUS_LABELS: Record<string, string> = {
   planning:  'تخطيط',
@@ -31,12 +32,7 @@ export default async function ProjectsPage() {
             {projects.length} مشروع مسجل
           </p>
         </div>
-        <Link
-          href="/company/projects/new"
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          + إضافة مشروع
-        </Link>
+        <AddProjectButton />
       </div>
 
       {/* Empty state */}
@@ -45,12 +41,9 @@ export default async function ProjectsPage() {
           <div className="text-4xl mb-4">🏗️</div>
           <h2 className="text-lg font-semibold text-text-primary">لا توجد مشروعات بعد</h2>
           <p className="mt-1 text-sm text-text-secondary">ابدأ بإضافة أول مشروع</p>
-          <Link
-            href="/company/projects/new"
-            className="mt-6 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-          >
-            + إضافة مشروع
-          </Link>
+          <div className="mt-6">
+            <AddProjectButton />
+          </div>
         </div>
       )}
 
@@ -66,11 +59,11 @@ export default async function ProjectsPage() {
               <div className="px-5 py-4">
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate">
-                      {project.arabic_name}
-                    </div>
-                    <div className="text-xs text-text-secondary mt-0.5" dir="ltr">
-                      {project.project_code}
+                    <div className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate flex items-center gap-2">
+                      <span>{project.arabic_name}</span>
+                      <span className="text-[10.5px] text-text-secondary font-medium tracking-wider bg-background px-1.5 py-0.5 rounded border border-border/50 shrink-0" dir="ltr">
+                        {project.project_code}
+                      </span>
                     </div>
                   </div>
                   <span className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[project.status] ?? 'bg-border text-text-secondary'}`}>
@@ -78,13 +71,7 @@ export default async function ProjectsPage() {
                   </span>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  {project.location && (
-                    <span className="inline-flex items-center rounded-full bg-background-secondary px-2 py-0.5 text-xs text-text-secondary">
-                      📍 {project.location}
-                    </span>
-                  )}
-                </div>
+
               </div>
 
               {/* Financial summary strip */}

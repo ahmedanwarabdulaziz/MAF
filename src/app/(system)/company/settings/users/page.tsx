@@ -3,6 +3,7 @@ import { requireSuperAdmin } from '@/lib/auth'
 import Link from 'next/link'
 import DeleteUserButton from './DeleteUserButton'
 import ToggleUserButton from './ToggleUserButton'
+import AddUserButton from './AddUserButton'
 
 export default async function UsersPage() {
   await requireSuperAdmin()
@@ -34,12 +35,7 @@ export default async function UsersPage() {
             إضافة المستخدمين وتعيين مجموعات الصلاحيات ونطاق الوصول
           </p>
         </div>
-        <Link
-          href="/company/settings/users/new"
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          + إضافة مستخدم
-        </Link>
+        <AddUserButton />
       </div>
 
       {/* Users table */}

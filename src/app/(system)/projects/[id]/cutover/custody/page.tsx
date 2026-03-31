@@ -36,7 +36,7 @@ export default function CutoverCustodyPage({ params }: Props) {
       setBatchId(batch.id)
 
       // Only load users scoped to this company or project
-      const { data: users } = await supabase.from('users').select('id, full_name, email')
+      const { data: users } = await supabase.from('users').select('id, display_name, email')
       if (users) setEmployees(users)
       
       const { data: positions } = await supabase
@@ -153,7 +153,7 @@ export default function CutoverCustodyPage({ params }: Props) {
                         className="w-full min-w-[150px] rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary"
                       >
                         <option value="" disabled>اختر الموظف...</option>
-                        {employees.map(u => <option key={u.id} value={u.id}>{u.full_name || u.email}</option>)}
+                        {employees.map(u => <option key={u.id} value={u.id}>{u.display_name || u.email}</option>)}
                       </select>
                     </td>
                     <td className="px-4 py-2">

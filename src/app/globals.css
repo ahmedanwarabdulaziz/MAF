@@ -21,10 +21,14 @@
   }
 
   /* Force English Numbers in Inputs */
-  input[type="number"],
   input[type="date"] {
     direction: ltr !important;
     text-align: right;
+  }
+
+  input[type="number"] {
+    direction: ltr !important;
+    text-align: center;
   }
 
   /* ── Premium Select Styling ────────────────────────────────── */
@@ -83,5 +87,16 @@
     box-shadow:
       0 0 0 3px rgba(37, 99, 235, 0.12),
       0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  /* Remove arrows from number inputs globally */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield; /* Firefox */
+    appearance: textfield; /* Standard */
   }
 }

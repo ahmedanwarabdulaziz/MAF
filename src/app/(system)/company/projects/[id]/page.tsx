@@ -2,6 +2,7 @@ import { getProject } from '@/lib/projects'
 import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import EditProjectOwner from './EditProjectOwner'
 
 const STATUS_LABELS: Record<string, string> = {
   planning: 'تخطيط', active: 'نشط', on_hold: 'متوقف', completed: 'مكتمل', cancelled: 'ملغى',
@@ -76,7 +77,16 @@ export default async function ProjectDetailPage({ params }: Props) {
       )}
 
       {/* Cards row */}
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-2">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-border bg-white px-5 py-4 shadow-sm">
+          <div className="text-xs text-text-secondary mb-1">الجهة المالكة</div>
+          <EditProjectOwner 
+            projectId={project.id}
+            currentOwnerId={(project as any).owner_party_id}
+            currentOwnerName={(project as any).owner_party?.arabic_name}
+          />
+        </div>
+
         {[
           { label: 'التخصيص المخطط', value: (project as any).planned_allocation_amount != null ? `${Number((project as any).planned_allocation_amount).toLocaleString('en-US')} ج.م` : '—' },
           { label: 'تاريخ البداية', value: (project as any).start_date ?? '—' },

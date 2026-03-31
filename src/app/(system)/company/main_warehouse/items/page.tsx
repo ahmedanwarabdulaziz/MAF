@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import { Suspense } from 'react'
+import NewItemDialog from './NewItemDialog'
 import ItemsFilterBar from './ItemsFilterBar'
 import { getMainCompanyId } from '@/actions/warehouse'
 
@@ -48,6 +49,13 @@ export default async function ItemsPage({ searchParams }: PageProps) {
     .eq('is_active', true)
     .order('arabic_name')
 
+  const { data: units } = await supabase
+    .from('units')
+    .select('id, arabic_name')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .order('arabic_name')
+
   const totalCount = items?.length ?? 0
   const hasFilters = !!(q || group || status)
 
@@ -58,15 +66,10 @@ export default async function ItemsPage({ searchParams }: PageProps) {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">دليل الأصناف</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            إدارة وتعريف الأصناف المخزنية والخدمية
+          إدارة وتعريف الأصناف المخزنية والخدمية
           </p>
         </div>
-        <Link
-          href="/company/main_warehouse/items/new"
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          + إضافة صنف جديد
-        </Link>
+        <NewItemDialog companyId={companyId} itemGroups={groups ?? []} units={units ?? []} />
       </div>
 
       {/* Filter bar */}

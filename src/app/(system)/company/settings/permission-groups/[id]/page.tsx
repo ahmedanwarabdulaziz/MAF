@@ -43,7 +43,7 @@ export default async function PermissionGroupDetailPage({ params }: Props) {
           href="/company/settings/permission-groups"
           className="text-sm text-text-secondary hover:text-primary"
         >
-          → مجموعات الصلاحيات
+          → قوالب الأدوار الوظيفية
         </Link>
       </div>
 
@@ -53,7 +53,7 @@ export default async function PermissionGroupDetailPage({ params }: Props) {
             <h1 className="text-2xl font-bold text-text-primary">{group.arabic_name}</h1>
             {group.is_system_group && (
               <span className="rounded-full bg-navy/10 px-2.5 py-0.5 text-xs font-medium text-navy">
-                مجموعة نظام
+                قالب نظام
               </span>
             )}
             {!group.is_active && (

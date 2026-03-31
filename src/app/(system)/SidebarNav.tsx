@@ -6,9 +6,10 @@ import { useParams, usePathname } from 'next/navigation'
 type Props = {
   isSuperAdmin: boolean
   allowedModules: string[]
+  companyName?: string
 }
 
-export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
+export default function SidebarNav({ isSuperAdmin, allowedModules, companyName }: Props) {
   const params = useParams()
   const pathname = usePathname()
   const projectId = params?.id as string | undefined
@@ -43,9 +44,14 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
         <div className={sectionLabel}>سياق المشروع</div>
 
         {can('dashboard') && (
-          <Link href={`/projects/${projectId}`} className={`${linkBase} ${isActive(`/projects/${projectId}`) && !isActive(`/projects/${projectId}/`) ? linkActive : linkInactive}`}>
-            لوحة تحكم المشروع
-          </Link>
+          <>
+            <Link href={`/projects/${projectId}`} className={`${linkBase} ${isActive(`/projects/${projectId}`) && !isActive(`/projects/${projectId}/`) && !isActive(`/projects/${projectId}/costs`) ? linkActive : linkInactive}`}>
+              لوحة تحكم المشروع
+            </Link>
+            <Link href={`/projects/${projectId}/costs`} className={`${linkBase} ${isActive(`/projects/${projectId}/costs`) ? linkActive : linkInactive}`}>
+              تتبع التكاليف
+            </Link>
+          </>
         )}
 
         {can('project_profile') && (
@@ -59,6 +65,9 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
             <div className={subLabel}>مخزن المشروع</div>
             <Link href={`/projects/${projectId}/project_warehouse/stock-balances`} className={`${linkBase} ${isActive(`/projects/${projectId}/project_warehouse/stock-balances`) ? linkActive : linkInactive}`}>
               أرصدة المشروع
+            </Link>
+            <Link href={`/projects/${projectId}/project_warehouse/issues`} className={`${linkBase} ${isActive(`/projects/${projectId}/project_warehouse/issues`) ? linkActive : linkInactive}`}>
+              أذون الصرف
             </Link>
             <Link href={`/projects/${projectId}/project_warehouse/transfers`} className={`${linkBase} ${isActive(`/projects/${projectId}/project_warehouse/transfers`) ? linkActive : linkInactive}`}>
               أذون التحويل
@@ -114,22 +123,22 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
         {can('payments') && (
           <>
             <div className={subLabel}>المدفوعات</div>
-            <Link href={`/projects/${projectId}/payments`} className={`${linkBase} ${isActive(`/projects/${projectId}/payments`) ? linkActive : linkInactive}`}>
+            <Link href={`/projects/${projectId}/payments`} className={`${linkBase} ${isActive(`/projects/${projectId}/payments`) && !isActive(`/projects/${projectId}/payments/queue`) ? linkActive : linkInactive}`}>
               سجلات الصرف
             </Link>
             <Link href={`/projects/${projectId}/payments/queue`} className={`${linkBase} ${isActive(`/projects/${projectId}/payments/queue`) ? linkActive : linkInactive}`}>
               الاستحقاقات المعلقة
+            </Link>
+            <Link href={`/projects/${projectId}/treasury`} className={`${linkBase} ${isActive(`/projects/${projectId}/treasury`) ? linkActive : linkInactive}`}>
+              خزائن المشروع
             </Link>
           </>
         )}
 
         {can('employee_custody') && (
           <>
-            <div className={subLabel}>العهد والمصروفات</div>
-            <Link href={`/projects/${projectId}/custody`} className={`${linkBase} ${isActive(`/projects/${projectId}/custody`) ? linkActive : linkInactive}`}>
-              أرصدة العهد
-            </Link>
-            <Link href={`/projects/${projectId}/custody/expenses`} className={`${linkBase} ${isActive(`/projects/${projectId}/custody/expenses`) ? linkActive : linkInactive}`}>
+            <div className={subLabel}>المصروفات والنثريات</div>
+            <Link href={`/projects/${projectId}/petty-expenses`} className={`${linkBase} ${isActive(`/projects/${projectId}/petty-expenses`) ? linkActive : linkInactive}`}>
               المصروفات النثرية
             </Link>
           </>
@@ -144,14 +153,8 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
       <div className={sectionLabel}>سياق الشركة</div>
 
       {can('dashboard') && (
-        <Link href="/company" className={`${linkBase} ${isActive('/company') && !isActive('/company/settings') ? linkActive : linkInactive}`}>
+        <Link href="/company" className={`${linkBase} ${isActive('/company') && !isActive('/company/settings') && !isActive('/company/approvals') ? linkActive : linkInactive}`}>
           لوحة تحكم الشركة
-        </Link>
-      )}
-
-      {can('consolidated_reports') && (
-        <Link href="/company/reports" className={`${linkBase} ${isActive('/company/reports') ? linkActive : linkInactive}`}>
-          التقارير المجمعة
         </Link>
       )}
 
@@ -161,14 +164,8 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
         </Link>
       )}
 
-      {can('party_masters') && (
-        <Link href="/company/parties" className={`${linkBase} ${isActive('/company/parties') ? linkActive : linkInactive}`}>
-          الأطراف
-        </Link>
-      )}
-
       {can('treasury') && (
-        <Link href="/company/treasury" className={`${linkBase} ${isActive('/company/treasury') ? linkActive : linkInactive}`}>
+        <Link href="/company/treasury" className={`${linkBase} ${isActive('/company/treasury') && !isActive('/company/treasury/expense-categories') ? linkActive : linkInactive}`}>
           الخزينة والحسابات
         </Link>
       )}
@@ -176,17 +173,43 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
       {can('corporate_expenses') && (
         <>
           <div className={subLabel}>مشتريات الشركة</div>
-          <Link href="/company/purchases" className={`${linkBase} ${isActive('/company/purchases') && !isActive('/company/purchases/expense-categories') && !isActive('/company/purchases/suppliers') ? linkActive : linkInactive}`}>
-            قائمة المشتريات الرئيسية
+          <Link href="/company/purchases" className={`${linkBase} ${isActive('/company/purchases') && !isActive('/company/purchases/expense-categories') && !isActive('/company/purchases/suppliers') && !isActive('/company/purchases/approved-prs') ? linkActive : linkInactive}`}>
+            مصروفات ومشتريات {companyName || 'الشركة'}
+          </Link>
+          <Link href="/company/purchases/approved-prs" className={`${linkBase} ${isActive('/company/purchases/approved-prs') ? linkActive : linkInactive}`}>
+            طلبات الشراء المعتمدة
           </Link>
           <Link href="/company/purchases/suppliers" className={`${linkBase} ${isActive('/company/purchases/suppliers') ? linkActive : linkInactive}`}>
             حسابات الموردين
           </Link>
-          <Link href="/company/purchases/expense-categories" className={`${linkBase} ${isActive('/company/purchases/expense-categories') ? linkActive : linkInactive}`}>
-            أقسام المصروفات
-          </Link>
         </>
       )}
+
+      {can('dashboard') && (
+        <Link href="/company/approvals" className={`${linkBase} ${isActive('/company/approvals') ? linkActive : linkInactive}`}>
+          الاعتمادات المعلقة
+        </Link>
+      )}
+
+      {(can('consolidated_reports') || can('treasury') || can('main_warehouse')) && (
+        <>
+          <div className={subLabel}>التقارير</div>
+          {can('consolidated_reports') && (
+            <Link href="/company/reports" className={`${linkBase} ${isActive('/company/reports') ? linkActive : linkInactive}`}>
+              التقارير المجمعة
+            </Link>
+          )}
+          {can('main_warehouse') && (
+            <Link href="/company/cost-centers" className={`${linkBase} ${isActive('/company/cost-centers') ? linkActive : linkInactive}`}>
+              مراكز التكلفة (Cost Centers)
+            </Link>
+          )}
+        </>
+      )}
+
+
+
+
 
       {can('main_warehouse') && (
         <>
@@ -194,7 +217,38 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
           <Link href="/company/main_warehouse/warehouses" className={`${linkBase} ${isActive('/company/main_warehouse/warehouses') ? linkActive : linkInactive}`}>
             المخازن
           </Link>
-          {(can('item_master')) && (
+
+          <Link href="/company/main_warehouse/stock-balances" className={`${linkBase} ${isActive('/company/main_warehouse/stock-balances') ? linkActive : linkInactive}`}>
+            الأرصدة الحالية
+          </Link>
+          <Link href="/company/main_warehouse/issues" className={`${linkBase} ${isActive('/company/main_warehouse/issues') ? linkActive : linkInactive}`}>
+            أذون الصرف
+          </Link>
+          <Link href="/company/main_warehouse/transfers" className={`${linkBase} ${isActive('/company/main_warehouse/transfers') ? linkActive : linkInactive}`}>
+            أذون التحويل
+          </Link>
+        </>
+      )}
+
+      {(can('party_masters') || can('treasury') || can('corporate_expenses') || can('item_master')) && (
+        <>
+          <div className={subLabel}>البيانات الأساسية (Master Data)</div>
+          {can('party_masters') && (
+            <Link href="/company/parties" className={`${linkBase} ${isActive('/company/parties') ? linkActive : linkInactive}`}>
+              جهات التعامل
+            </Link>
+          )}
+          {can('treasury') && (
+            <Link href="/company/treasury/expense-categories" className={`${linkBase} ${isActive('/company/treasury/expense-categories') ? linkActive : linkInactive}`}>
+              بنود المصروفات النثرية
+            </Link>
+          )}
+          {can('corporate_expenses') && (
+            <Link href="/company/purchases/expense-categories" className={`${linkBase} ${isActive('/company/purchases/expense-categories') ? linkActive : linkInactive}`}>
+              أقسام مصروفات {companyName || 'الشركة'}
+            </Link>
+          )}
+          {can('item_master') && (
             <>
               <Link href="/company/main_warehouse/item-groups" className={`${linkBase} ${isActive('/company/main_warehouse/item-groups') ? linkActive : linkInactive}`}>
                 مجموعات الأصناف
@@ -204,12 +258,6 @@ export default function SidebarNav({ isSuperAdmin, allowedModules }: Props) {
               </Link>
             </>
           )}
-          <Link href="/company/main_warehouse/stock-balances" className={`${linkBase} ${isActive('/company/main_warehouse/stock-balances') ? linkActive : linkInactive}`}>
-            الأرصدة الحالية
-          </Link>
-          <Link href="/company/main_warehouse/transfers" className={`${linkBase} ${isActive('/company/main_warehouse/transfers') ? linkActive : linkInactive}`}>
-            أذون التحويل
-          </Link>
         </>
       )}
     </nav>

@@ -114,12 +114,14 @@ export default async function TreasuryAccountDetailPage({
 
         <div className="flex flex-col items-end gap-3">
           <div className="flex gap-2">
-            <Link
-              href={`/company/treasury/${params.account_id}/deposit`}
-              className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 transition-colors"
-            >
-              + إيداع
-            </Link>
+            {!account.project_id && (
+              <Link
+                href={`/company/treasury/${params.account_id}/deposit`}
+                className="rounded-lg bg-success px-4 py-2 text-sm font-semibold text-white hover:bg-success/90 transition-colors"
+              >
+                + إيداع
+              </Link>
+            )}
             <Link
               href={`/company/treasury/${params.account_id}/edit`}
               className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary hover:bg-background-secondary hover:text-primary transition-colors"

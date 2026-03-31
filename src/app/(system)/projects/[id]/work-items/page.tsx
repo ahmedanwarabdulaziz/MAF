@@ -4,23 +4,26 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getProjectWorkItems, deleteProjectWorkItem } from '@/actions/agreements'
+import NewWorkItemDialog from './NewWorkItemDialog'
+import EditWorkItemDialog from './EditWorkItemDialog'
 
 export default function ProjectWorkItemsPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    async function fetchItems() {
-      try {
-        const data = await getProjectWorkItems(params.id)
-        setItems(data || [])
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
+  async function fetchItems() {
+    try {
+      const data = await getProjectWorkItems(params.id)
+      setItems(data || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  useEffect(() => {
     fetchItems()
   }, [params.id])
 
@@ -44,12 +47,7 @@ export default function ProjectWorkItemsPage({ params }: { params: { id: string 
             إدارة البنود الخاصة بالمشروع والمستخدمة في عقود مقاولي الباطن والمستخلصات.
           </p>
         </div>
-        <Link
-          href={`/projects/${params.id}/work-items/new`}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors"
-        >
-          + إضافة بند جديد
-        </Link>
+        <NewWorkItemDialog projectId={params.id} onSuccess={fetchItems} />
       </div>
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
@@ -65,6 +63,8 @@ export default function ProjectWorkItemsPage({ params }: { params: { id: string 
               <tr>
                 <th className="px-6 py-4 font-semibold text-text-secondary">الكود</th>
                 <th className="px-6 py-4 font-semibold text-text-secondary">وصف البند (عربي)</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary">سعر المالك</th>
+                <th className="px-6 py-4 font-semibold text-text-secondary">سعر الباطن</th>
                 <th className="px-6 py-4 font-semibold text-text-secondary">الوحدة الافتراضية</th>
                 <th className="px-6 py-4 font-semibold text-text-secondary">ملاحظات</th>
                 <th className="px-6 py-4 w-24">إجراءات</th>
@@ -79,6 +79,12 @@ export default function ProjectWorkItemsPage({ params }: { params: { id: string 
                   <td className="px-6 py-4">
                     {item.arabic_description}
                   </td>
+                  <td className="px-6 py-4 font-medium text-text-primary" dir="ltr">
+                    {Number(item.owner_price || 0).toLocaleString()}
+                  </td>
+                  <td className="px-6 py-4 font-medium text-text-primary" dir="ltr">
+                    {Number(item.subcontractor_price || 0).toLocaleString()}
+                  </td>
                   <td className="px-6 py-4 text-text-secondary">
                     {item.units?.arabic_name || '-'}
                   </td>
@@ -87,12 +93,11 @@ export default function ProjectWorkItemsPage({ params }: { params: { id: string 
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <Link
-                        href={`/projects/${params.id}/work-items/${item.id}/edit`}
-                        className="text-primary hover:text-primary/80 transition-colors"
-                      >
-                        تعديل
-                      </Link>
+                      <EditWorkItemDialog
+                        projectId={params.id}
+                        initialData={item}
+                        onSuccess={fetchItems}
+                      />
                       <button
                         onClick={() => handleDelete(item.id)}
                         className="text-danger hover:text-danger/80 transition-colors"

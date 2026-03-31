@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getSubcontractAgreements } from '@/actions/agreements'
+import NewAgreementDialog from './NewAgreementDialog'
 
 export default async function ProjectAgreementsPage({ params }: { params: { id: string } }) {
   const agreements = await getSubcontractAgreements(params.id)
@@ -33,12 +34,7 @@ export default async function ProjectAgreementsPage({ params }: { params: { id: 
             إدارة عقود مقاولي الباطن المرتبطة بهذا المشروع والفئات المتفق عليها.
           </p>
         </div>
-        <Link
-          href={`/projects/${params.id}/agreements/new`}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors"
-        >
-          + إضافة عقد جديد
-        </Link>
+        <NewAgreementDialog projectId={params.id} />
       </div>
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">

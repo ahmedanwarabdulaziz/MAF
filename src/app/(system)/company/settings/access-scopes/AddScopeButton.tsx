@@ -19,10 +19,12 @@ interface Props {
   userId: string
   userName: string
   projects: Project[]
+  roleTemplates: { id: string; arabic_name: string }[]
 }
 
-export default function AddScopeButton({ userId, userName, projects }: Props) {
+export default function AddScopeButton({ userId, userName, projects, roleTemplates }: Props) {
   const [open, setOpen] = useState(false)
+  const [roleTemplateId, setRoleTemplateId] = useState('')
   const [giveCompany, setGiveCompany] = useState(false)
   const [giveAllProjects, setGiveAllProjects] = useState(false)
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
@@ -39,6 +41,7 @@ export default function AddScopeButton({ userId, userName, projects }: Props) {
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation() // don't toggle the user row
+    setRoleTemplateId('')
     setGiveCompany(false)
     setGiveAllProjects(false)
     setSelectedProjects(new Set())
@@ -47,6 +50,10 @@ export default function AddScopeButton({ userId, userName, projects }: Props) {
   }
 
   const handleSubmit = () => {
+    if (!roleTemplateId) {
+      setError('يرجى اختيار القالب الوظيفي')
+      return
+    }
     if (!giveCompany && !giveAllProjects && selectedProjects.size === 0) {
       setError('Select at least one scope')
       return
@@ -59,7 +66,7 @@ export default function AddScopeButton({ userId, userName, projects }: Props) {
     selectedProjects.forEach(pid => scopes.push({ scope_type: 'selected_project', project_id: pid }))
 
     startTransition(async () => {
-      const result = await grantBulkScopesAction(userId, scopes)
+      const result = await grantBulkScopesAction(userId, roleTemplateId, scopes)
       if (result.error) {
         setError(result.error)
       } else {
@@ -90,7 +97,7 @@ export default function AddScopeButton({ userId, userName, projects }: Props) {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <div>
-                <h2 className="text-base font-semibold text-text-primary">Add scope</h2>
+                <h2 className="text-base font-semibold text-text-primary">إضافة للمستخدم</h2>
                 <p className="text-xs text-text-secondary mt-0.5">{userName}</p>
               </div>
               <button onClick={() => !isPending && setOpen(false)} className="text-text-secondary hover:text-text-primary transition-colors">
@@ -101,7 +108,27 @@ export default function AddScopeButton({ userId, userName, projects }: Props) {
             </div>
 
             {/* Body */}
-            <div className="px-6 py-5 space-y-3">
+            <div className="px-6 py-5 space-y-4">
+              {/* Role Template selector */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-text-primary">
+                  اختيار القالب الوظيفي <span className="text-danger">*</span>
+                </label>
+                <select
+                  value={roleTemplateId}
+                  onChange={e => setRoleTemplateId(e.target.value)}
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-text-primary focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  dir="rtl"
+                >
+                  <option value="">— اختر قالب —</option>
+                  {roleTemplates.map(r => (
+                    <option key={r.id} value={r.id}>{r.arabic_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Scope selection wrapper */}
+              <div className="space-y-3">
               {/* Main company */}
               <label className={`flex items-center gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${giveCompany ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40'}`}>
                 <input type="checkbox" checked={giveCompany} onChange={e => setGiveCompany(e.target.checked)} className="accent-primary h-4 w-4" />
@@ -140,19 +167,20 @@ export default function AddScopeButton({ userId, userName, projects }: Props) {
                   </div>
                 </div>
               )}
+              </div>
 
               {error && (
-                <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2.5 text-sm text-danger">{error}</div>
+                <div className="rounded-lg bg-danger/10 border border-danger/20 px-4 py-2.5 text-sm text-danger mt-4">{error}</div>
               )}
             </div>
 
             {/* Footer */}
             <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
               <button onClick={() => !isPending && setOpen(false)} disabled={isPending} className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary hover:border-text-secondary/40 transition-colors disabled:opacity-50">
-                Cancel
+                إلغاء
               </button>
               <button onClick={handleSubmit} disabled={isPending} className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50">
-                {isPending ? 'Saving…' : 'Grant scopes'}
+                {isPending ? 'جاري الحفظ…' : 'حفظ'}
               </button>
             </div>
           </div>

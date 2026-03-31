@@ -1,19 +1,19 @@
 import {
   getExpenseCategories,
   getSupplierParties,
-  getCompanyBranches,
   getMainWarehouses,
   getItems,
+  getCompanyCostCenters,
 } from '../actions'
 import PurchaseInvoiceForm from './invoice-form'
 
 export default async function NewCompanyPurchasePage() {
-  const [categories, suppliers, branches, warehouses, items] = await Promise.all([
+  const [categories, suppliers, warehouses, items, costCenters] = await Promise.all([
     getExpenseCategories(),
     getSupplierParties(),
-    getCompanyBranches(),
     getMainWarehouses(),
     getItems(),
+    getCompanyCostCenters(),
   ])
 
   return (
@@ -25,9 +25,9 @@ export default async function NewCompanyPurchasePage() {
       <PurchaseInvoiceForm
         categories={categories}
         suppliers={suppliers}
-        branches={branches}
         warehouses={warehouses}
         items={items}
+        costCenters={costCenters}
       />
     </div>
   )

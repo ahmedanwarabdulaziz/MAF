@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase-server'
 import { requirePermission } from '@/lib/auth'
-import Link from 'next/link'
+import { getMainCompanyId } from '@/actions/warehouse'
+import NewTransferDialog from '@/app/(system)/company/main_warehouse/transfers/NewTransferDialog'
+import { TransferActions } from '@/app/(system)/company/main_warehouse/transfers/TransferActions'
 
 export default async function ProjectTransfersPage({
   params
@@ -9,14 +11,18 @@ export default async function ProjectTransfersPage({
 }) {
   await requirePermission('project_warehouse', 'view')
   const supabase = createClient()
+  const companyId = await getMainCompanyId()
 
   // Find transfers where source or destination belongs to this project
   const { data: transfers } = await supabase
     .from('warehouse_transfers')
     .select(`
-      id, document_no, transfer_date, status, project_id,
+      id, document_no, transfer_date, status, project_id, notes,
       source:source_warehouse_id(arabic_name, project_id),
-      destination:destination_warehouse_id(arabic_name, project_id)
+      destination:destination_warehouse_id(arabic_name, project_id),
+      lines:warehouse_transfer_lines(
+        id, quantity, unit_cost, item:items(item_code, arabic_name), unit:units(arabic_name)
+      )
     `)
     // Normally, Or condition for source.project_id = param OR destination.project_id = param
     // In Supabase we check project_id on the head if it's there
@@ -31,6 +37,25 @@ export default async function ProjectTransfersPage({
     return src?.project_id === params.id || dst?.project_id === params.id || t.project_id === params.id
   })
 
+  // Fetch prerequisites for Transfer Dialog
+  const { data: warehouses } = await supabase
+    .from('warehouses')
+    .select('id, arabic_name, warehouse_type')
+    .eq('company_id', companyId)
+    .eq('is_active', true)
+    .order('arabic_name')
+
+  const { data: itemGroups } = await supabase
+    .from('item_groups')
+    .select('id, arabic_name, group_code, parent_group_id')
+    .eq('is_active', true)
+
+  const { data: items } = await supabase
+    .from('items')
+    .select('id, item_code, arabic_name, primary_unit_id, item_group_id, item_group:item_groups(id, arabic_name), unit:units!primary_unit_id(arabic_name)')
+    .eq('is_active', true)
+    .order('arabic_name')
+
   return (
     <div>
       <div className="mb-8 flex items-center justify-between">
@@ -40,12 +65,13 @@ export default async function ProjectTransfersPage({
             متابعة تحويلات المخزون الصادرة والواردة لمخازن المشروع
           </p>
         </div>
-        <Link
-          href={`/projects/${params.id}/project_warehouse/transfers/new`}
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          + إضافة إذن تحويل
-        </Link>
+        <NewTransferDialog 
+          companyId={companyId}
+          projectId={params.id}
+          warehouses={warehouses || []}
+          items={items || []}
+          itemGroups={itemGroups || []}
+        />
       </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
@@ -57,12 +83,13 @@ export default async function ProjectTransfersPage({
               <th className="px-6 py-3 font-semibold text-text-secondary">من (المرسل)</th>
               <th className="px-6 py-3 font-semibold text-text-secondary">إلى (المستلم)</th>
               <th className="px-6 py-3 font-semibold text-text-secondary">الحالة</th>
+              <th className="px-6 py-3 font-semibold text-text-secondary w-24">إجراءات</th>
             </tr>
           </thead>
           <tbody>
             {!projectTransfers?.length && (
               <tr>
-                <td colSpan={5} className="px-6 py-10 text-center text-text-secondary">
+                <td colSpan={6} className="px-6 py-10 text-center text-text-secondary">
                   لا توجد أذون تحويل خاصة بهذا المشروع بعد.
                 </td>
               </tr>
@@ -82,13 +109,18 @@ export default async function ProjectTransfersPage({
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         t.status === 'confirmed'
                           ? 'bg-success/10 text-success'
+                          : t.status === 'dispatched'
+                          ? 'bg-info/10 text-info'
                           : t.status === 'draft'
                           ? 'bg-secondary/10 text-secondary'
                           : 'bg-danger/10 text-danger'
                       }`}
                     >
-                      {t.status === 'confirmed' ? 'معتمد' : t.status === 'draft' ? 'مسودة' : 'ملغي'}
+                      {t.status === 'confirmed' ? 'مستلمة' : t.status === 'dispatched' ? 'في الطريق' : t.status === 'draft' ? 'مسودة' : 'ملغية'}
                     </span>
+                  </td>
+                  <td className="px-6 py-4">
+                    <TransferActions transfer={t} />
                   </td>
                 </tr>
               )

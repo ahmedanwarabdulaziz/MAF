@@ -1,6 +1,6 @@
 import { requirePermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase-server'
-import ItemForm from '../new/item-form'
+import ItemForm from './item-form'
 import { getMainCompanyId } from '@/actions/warehouse'
 import { notFound } from 'next/navigation'
 

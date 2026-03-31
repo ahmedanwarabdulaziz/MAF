@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 
 const ROLE_LABELS: Record<string, string> = {
-  owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد', consultant: 'مستشار', other: 'آخر',
+  owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد',
 }
 const ROLE_COLORS: Record<string, string> = {
   owner:         'bg-navy/10 text-navy',
@@ -27,7 +27,7 @@ export default async function PartyShowPage({ params }: Props) {
     <div>
       {/* Breadcrumb */}
       <div className="mb-4 flex items-center gap-2 text-sm text-text-secondary">
-        <Link href="/company/parties" className="hover:text-primary transition-colors">الأطراف</Link>
+        <Link href="/company/parties" className="hover:text-primary transition-colors">جهات التعامل</Link>
         <span>←</span>
         <span className="text-text-primary font-medium">{p.arabic_name}</span>
       </div>

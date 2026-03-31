@@ -9,16 +9,42 @@ export default async function ProjectStockBalancesPage({
   await requirePermission('project_warehouse', 'view')
   const supabase = createClient()
 
-  // Fetch stock_balances where warehouse belongs to this project
-  const { data: balances, error } = await supabase
-    .from('stock_balances')
-    .select(`
-      id, quantity_on_hand, total_value, weighted_avg_cost, last_movement_at,
-      items ( id, item_code, arabic_name, primary_unit_id, units(arabic_name) ),
-      warehouses!inner ( id, arabic_name, project_id )
-    `)
-    .eq('warehouses.project_id', params.id)
-    .order('quantity_on_hand', { ascending: false })
+  // Step 1: Get warehouse IDs for this project
+  const { data: projectWarehouses, error: whErr } = await supabase
+    .from('warehouses')
+    .select('id, arabic_name')
+    .eq('project_id', params.id)
+
+  console.log('[STOCK-DEBUG] Project ID:', params.id)
+  console.log('[STOCK-DEBUG] Warehouses found:', JSON.stringify(projectWarehouses))
+  if (whErr) console.error('[STOCK-DEBUG] Warehouse query error:', whErr)
+
+  const warehouseIds = projectWarehouses?.map(w => w.id) || []
+  console.log('[STOCK-DEBUG] Warehouse IDs:', warehouseIds)
+
+  // Step 2: Fetch stock_balances for those warehouses
+  let balances: any[] = []
+  let error: any = null
+
+  if (warehouseIds.length > 0) {
+    const result = await supabase
+      .from('stock_balances')
+      .select(`
+        id, warehouse_id, item_id, quantity_on_hand, total_value, weighted_avg_cost, last_movement_at,
+        items ( id, item_code, arabic_name, primary_unit_id, units!items_primary_unit_id_fkey(arabic_name) ),
+        warehouses ( id, arabic_name, project_id )
+      `)
+      .in('warehouse_id', warehouseIds)
+      .order('quantity_on_hand', { ascending: false })
+    
+    balances = result.data || []
+    error = result.error
+    console.log('[STOCK-DEBUG] Stock balances query result:', JSON.stringify(result.data?.length), 'rows')
+    console.log('[STOCK-DEBUG] Stock balances data:', JSON.stringify(result.data))
+    if (result.error) console.error('[STOCK-DEBUG] Stock balances error:', result.error)
+  } else {
+    console.log('[STOCK-DEBUG] No warehouses found for project, skipping stock query')
+  }
 
   if (error) {
     console.error('Error fetching project balances:', error)

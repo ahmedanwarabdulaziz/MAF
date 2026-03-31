@@ -13,7 +13,7 @@ export async function peekNextDocumentNo(companyId: string, docType: string, pre
   // Fallback if RPC fails or migration is not applied yet
   if (error) {
     console.error('Error peeking next document no:', error)
-    return 'تلقائي'
+    return `خطأ: ${error.message}`
   }
   
   return data as string

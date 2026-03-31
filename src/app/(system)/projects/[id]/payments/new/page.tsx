@@ -23,3 +23,4 @@ export default async function NewPaymentVoucherPage({ params }: { params: { id: 
     />
   )
 }
+

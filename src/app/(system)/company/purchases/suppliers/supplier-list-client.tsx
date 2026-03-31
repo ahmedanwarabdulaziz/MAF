@@ -36,6 +36,8 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
         }
       }
       const g = acc[row.supplier_party_id]
+      g.total_gross = (g.total_gross || 0) + Number(row.total_gross || 0)
+      g.total_discount = (g.total_discount || 0) + Number(row.total_discount || 0)
       g.total_net += Number(row.total_net || 0)
       g.total_paid += Number(row.total_paid || 0)
       g.total_outstanding += Number(row.total_outstanding || 0)
@@ -146,9 +148,11 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
             <tr>
               <th className="px-5 py-3 font-semibold text-text-secondary">المورد / المقاول</th>
               <th className="px-5 py-3 font-semibold text-text-secondary">نطاقات العمل المعروضة</th>
-              <th className="px-5 py-3 font-semibold text-text-secondary">إجمالي المطالبات</th>
-              <th className="px-5 py-3 font-semibold text-success">المدفوع الكلي</th>
-              <th className="px-5 py-3 font-semibold text-danger">الرصيد المستحق</th>
+              <th className="px-5 py-3 font-semibold text-text-secondary text-right" title="قيمة المطالبات قبل أي خصوم أو تعليات">كمية الأعمال (Gross)</th>
+              <th className="px-5 py-3 font-semibold text-danger text-right" title="قيمة التعليات والخصومات ونسبتها من الإجمالي">التعليات والخصوم</th>
+              <th className="px-5 py-3 font-semibold text-text-primary text-right" title="الصافي بعد التعلية والخصم">الصافي للمطالبة</th>
+              <th className="px-5 py-3 font-semibold text-success text-right">المدفوع الكلي</th>
+              <th className="px-5 py-3 font-semibold text-danger text-right">الرصيد المستحق</th>
               <th className="px-5 py-3"></th>
             </tr>
           </thead>
@@ -167,7 +171,18 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
                     ))}
                   </div>
                 </td>
-                <td className="px-5 py-4 text-text-secondary dir-ltr text-right">{fmt(sup.total_net)} ج.م</td>
+                <td className="px-5 py-4 text-text-secondary dir-ltr text-right">{fmt(sup.total_gross)} ج.م</td>
+                <td className="px-5 py-4 text-danger dir-ltr text-right">
+                  <div className="flex flex-col items-end">
+                    <span>{fmt(sup.total_discount)} ج.م</span>
+                    {sup.total_gross > 0 && sup.total_discount > 0 && (
+                      <span className="text-[10px] block opacity-75">
+                        ({((sup.total_discount / sup.total_gross) * 100).toFixed(1)}%)
+                      </span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-5 py-4 font-bold text-text-primary dir-ltr text-right text-base">{fmt(sup.total_net)} ج.م</td>
                 <td className="px-5 py-4 text-success font-medium dir-ltr text-right">{fmt(sup.total_paid)} ج.م</td>
                 <td className="px-5 py-4 font-bold text-text-primary dir-ltr text-right">
                   <span className={sup.total_outstanding > 0 ? 'text-danger' : 'text-text-secondary'}>

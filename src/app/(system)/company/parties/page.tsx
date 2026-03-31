@@ -2,9 +2,10 @@ import { getParties, PartyRoleType } from '@/lib/projects'
 import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import PartiesFilterBar from './PartiesFilterBar'
+import NewPartyDialog from './NewPartyDialog'
 
 const ROLE_LABELS: Record<string, string> = {
-  owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد', consultant: 'مستشار', other: 'آخر',
+  owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد',
 }
 const ROLE_COLORS: Record<string, string> = {
   owner:         'bg-navy/10 text-navy',
@@ -30,17 +31,12 @@ export default async function PartiesPage(props: {
       {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">الأطراف</h1>
+          <h1 className="text-2xl font-bold text-text-primary">جهات التعامل</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            {parties.length} طرف مسجل — ملاك، مقاولون، موردون
+            {parties.length} جهة مسجلة — ملاك، مقاولون، موردون
           </p>
         </div>
-        <Link
-          href="/company/parties/new"
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          + إضافة طرف
-        </Link>
+        <NewPartyDialog />
       </div>
 
       <PartiesFilterBar />
@@ -49,14 +45,9 @@ export default async function PartiesPage(props: {
       {parties.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-white py-20">
           <div className="text-4xl mb-4">🤝</div>
-          <h2 className="text-lg font-semibold text-text-primary">لا توجد أطراف مسجلة بعد</h2>
-          <p className="mt-1 text-sm text-text-secondary">أضف الملاك والمقاولين والموردين هنا</p>
-          <Link
-            href="/company/parties/new"
-            className="mt-6 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-          >
-            + إضافة طرف
-          </Link>
+          <h2 className="text-lg font-semibold text-text-primary">لا توجد جهات تعامل مسجلة بعد</h2>
+          <p className="mt-1 mb-6 text-sm text-text-secondary">أضف الملاك والمقاولين والموردين هنا</p>
+          <NewPartyDialog />
         </div>
       )}
 

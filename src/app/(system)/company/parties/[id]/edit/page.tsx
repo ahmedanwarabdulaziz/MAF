@@ -17,7 +17,7 @@ export default async function EditPartyPage({ params }: Props) {
     <div className="max-w-2xl">
       {/* Breadcrumb */}
       <div className="mb-4 flex items-center gap-2 text-sm text-text-secondary">
-        <Link href="/company/parties" className="hover:text-primary transition-colors">الأطراف</Link>
+        <Link href="/company/parties" className="hover:text-primary transition-colors">جهات التعامل</Link>
         <span>←</span>
         <Link href={`/company/parties/${p.id}`} className="hover:text-primary transition-colors">{p.arabic_name}</Link>
         <span>←</span>
@@ -25,7 +25,7 @@ export default async function EditPartyPage({ params }: Props) {
       </div>
 
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-text-primary">تعديل بيانات الطرف</h1>
+        <h1 className="text-2xl font-bold text-text-primary">تعديل بيانات الجهة</h1>
         <p className="mt-1 text-sm text-text-secondary">تحديث بيانات {p.arabic_name}</p>
       </div>
 

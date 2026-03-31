@@ -2,6 +2,7 @@ import { getCompany } from '@/lib/projects'
 import { requirePermission } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase-server'
+import EditCompanyButton from './EditCompanyButton'
 
 export default async function CompanySettingsPage() {
   const supabase = createClient()
@@ -63,10 +64,8 @@ export default async function CompanySettingsPage() {
             ))}
           </dl>
 
-          <div className="pt-4 border-t border-border">
-            <p className="text-xs text-text-secondary">
-              لتعديل بيانات الشركة يرجى التواصل مع فريق الإدارة
-            </p>
+          <div className="pt-4 border-t border-border flex justify-end">
+            <EditCompanyButton company={company} />
           </div>
         </div>
       )}

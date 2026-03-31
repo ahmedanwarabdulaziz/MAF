@@ -14,12 +14,12 @@ export default async function AccessScopesPage() {
   await requireSuperAdmin()
   const supabase = createClient()
 
-  // Fetch scopes without relying on implicit FK joins
+  // Fetch scopes from the unified table
   const { data: rawScopes } = await supabase
-    .from('user_access_scopes')
-    .select('id, user_id, scope_type, project_id, warehouse_id, is_active, granted_at')
+    .from('user_permission_group_assignments')
+    .select('id, user_id, permission_group_id, scope_type, project_id, warehouse_id, is_active, assigned_at')
     .order('is_active', { ascending: false })
-    .order('granted_at', { ascending: false })
+    .order('assigned_at', { ascending: false })
 
   // Fetch users for lookup
   const { data: allUsers } = await supabase
@@ -31,19 +31,25 @@ export default async function AccessScopesPage() {
     .from('projects')
     .select('id, arabic_name, project_code')
 
+  // Fetch permission groups (Role Templates)
+  const { data: roleTemplates } = await supabase
+    .from('permission_groups')
+    .select('id, arabic_name')
+
   // Build lookup maps
   const userMap = Object.fromEntries((allUsers ?? []).map(u => [u.id, u]))
   const projectMap = Object.fromEntries((allProjects ?? []).map(p => [p.id, p]))
+  const roleMap = Object.fromEntries((roleTemplates ?? []).map(r => [r.id, r]))
 
   const scopes = (rawScopes ?? []).map(s => ({
     ...s,
     user: userMap[s.user_id] ?? null,
     project: s.project_id ? projectMap[s.project_id] ?? null : null,
+    role: roleMap[s.permission_group_id] ?? null,
+    granted_at: s.assigned_at, // mapped for legacy component compatibility
   }))
 
-  // Users list for form — exclude users who already have any scope
-  const usersWithScopes = new Set((rawScopes ?? []).map(s => s.user_id))
-
+  // Users list for form — all active non-super-admin users can always add more scopes
   const { data: allUsersForForm } = await supabase
     .from('users')
     .select('id, display_name')
@@ -51,8 +57,7 @@ export default async function AccessScopesPage() {
     .eq('is_super_admin', false)
     .order('display_name')
 
-  // Only users without any existing scope entry
-  const users = (allUsersForForm ?? []).filter(u => !usersWithScopes.has(u.id))
+  const users = allUsersForForm ?? []
 
   const { data: projects } = await supabase
     .from('projects')
@@ -66,9 +71,9 @@ export default async function AccessScopesPage() {
       {/* Page header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">نطاق الوصول</h1>
+          <h1 className="text-2xl font-bold text-text-primary">فريق العمل والصلاحيات</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            إدارة صلاحيات وصول المستخدمين للشركة والمشروعات. بدون النطاق الصحيح لن يتمكن المستخدم من الوصول لبيانات المشاريع حتى لو كان يمتلك الصلاحية الخاصة بها.
+            إدارة تعيين المستخدمين في المشاريع وربطهم بالقوالب الوظيفية لتحديد مستوى الصلاحيات بدقة.
           </p>
         </div>
       </div>
@@ -89,18 +94,18 @@ export default async function AccessScopesPage() {
       {/* Grant form */}
       <div className="mb-8 overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <div className="border-b border-border bg-background-secondary px-6 py-4">
-          <h2 className="font-semibold text-text-primary">منح تفويض نطاق وصول جديد</h2>
+          <h2 className="font-semibold text-text-primary">تعيين موظف وتحديد صلاحياته</h2>
         </div>
-        <GrantScopeForm users={users ?? []} projects={projects ?? []} />
+        <GrantScopeForm users={users ?? []} projects={projects ?? []} roleTemplates={roleTemplates ?? []} />
       </div>
 
       {/* Scope table — grouped by user, collapsible */}
       <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <div className="border-b border-border bg-background-secondary px-6 py-4 flex items-center justify-between">
-          <h2 className="font-semibold text-text-primary">النطاقات الممنوحة الحالية</h2>
+          <h2 className="font-semibold text-text-primary">تعيينات فرق العمل الحالية</h2>
           <span className="text-xs text-text-secondary">{scopes.length} نطاق</span>
         </div>
-        <ScopesList scopes={scopes} projects={projects ?? []} />
+        <ScopesList scopes={scopes} projects={projects ?? []} roleTemplates={roleTemplates ?? []} />
       </div>
     </div>
   )

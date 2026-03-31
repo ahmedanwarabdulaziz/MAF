@@ -47,6 +47,7 @@ export async function getProject(id: string) {
     .select(`
       *,
       cost_centers(arabic_name, english_name),
+      owner_party:owner_party_id(id, arabic_name),
       project_parties(
         id, project_role, status,
         parties(id, arabic_name, english_name)

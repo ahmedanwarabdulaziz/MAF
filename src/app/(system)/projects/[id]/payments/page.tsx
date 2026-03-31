@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getProjectPayments } from '@/actions/payments'
+import ViewPaymentVoucherModal from './ViewPaymentVoucherModal'
 
 export const metadata = {
   title: 'سجلات الصرف | نظام إدارة المقاولات'
@@ -41,12 +42,6 @@ export default async function ProjectPaymentsPage({ params }: { params: { id: st
             className="rounded-lg bg-secondary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-secondary/90 transition-colors"
           >
             الاستحقاقات المعلقة
-          </Link>
-          <Link
-            href={`/projects/${params.id}/payments/new`}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors"
-          >
-            + تسجيل دفعة أو صرف
           </Link>
         </div>
       </div>
@@ -101,12 +96,7 @@ export default async function ProjectPaymentsPage({ params }: { params: { id: st
                         </span>
                       </td>
                       <td className="px-6 py-4">
-                        <Link
-                          href={`/projects/${params.id}/payments/${voucher.id}`}
-                          className="text-primary hover:text-primary/80 transition-colors font-medium border border-border px-3 py-1.5 rounded-md hover:bg-black/5"
-                        >
-                          عرض المستند
-                        </Link>
+                        <ViewPaymentVoucherModal voucherId={voucher.id} />
                       </td>
                     </tr>
                   )

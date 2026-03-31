@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase-server'
 import { requireSuperAdmin } from '@/lib/auth'
 import Link from 'next/link'
 import DeletePermissionGroupButton from './DeletePermissionGroupButton'
+import AddPermissionGroupButton from './AddPermissionGroupButton'
 
 export default async function PermissionGroupsPage() {
   await requireSuperAdmin()
@@ -17,17 +18,12 @@ export default async function PermissionGroupsPage() {
       {/* Page header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">مجموعات الصلاحيات</h1>
+          <h1 className="text-2xl font-bold text-text-primary">قوالب الأدوار الوظيفية</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            إدارة مجموعات الوصول وتحرير مصفوفة الصلاحيات لكل مجموعة
+            إدارة القوالب الوظيفية وتحرير المصفوفة البصرية لتعيينها سريعاً للموظفين
           </p>
         </div>
-        <Link
-          href="/company/settings/permission-groups/new"
-          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-        >
-          + مجموعة جديدة
-        </Link>
+        <AddPermissionGroupButton />
       </div>
 
       {/* Groups grid */}

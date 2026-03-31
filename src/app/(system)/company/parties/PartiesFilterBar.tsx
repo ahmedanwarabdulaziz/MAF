@@ -4,7 +4,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { useRef, useState, useTransition } from 'react'
 
 const ROLE_LABELS: Record<string, string> = {
-  owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد', consultant: 'مستشار', other: 'آخر',
+  owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد',
 }
 
 export default function PartiesFilterBar() {

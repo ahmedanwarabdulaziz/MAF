@@ -21,6 +21,30 @@ export async function getProjectWorkItems(projectId: string) {
   return data
 }
 
+export async function getNextWorkItemCode(projectId: string) {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('project_work_items')
+    .select('item_code')
+    .eq('project_id', projectId)
+
+  if (!data || data.length === 0) return 'BND-001'
+
+  let maxNum = 0
+  for (const row of data) {
+    if (row.item_code) {
+      const match = row.item_code.match(/\d+/)
+      if (match) {
+        const num = parseInt(match[0], 10)
+        if (num > maxNum) maxNum = num
+      }
+    }
+  }
+
+  const nextNum = maxNum + 1
+  return `BND-${nextNum.toString().padStart(3, '0')}`
+}
+
 export async function createProjectWorkItem(data: {
   project_id: string,
   company_id: string,
@@ -28,6 +52,8 @@ export async function createProjectWorkItem(data: {
   arabic_description: string,
   english_description?: string,
   default_unit_id?: string,
+  owner_price?: number,
+  subcontractor_price?: number,
   notes?: string
 }) {
   const supabase = createClient()
@@ -36,6 +62,8 @@ export async function createProjectWorkItem(data: {
     item_code: data.item_code || null,
     english_description: data.english_description || null,
     default_unit_id: data.default_unit_id || null,
+    owner_price: data.owner_price || 0,
+    subcontractor_price: data.subcontractor_price || 0,
     notes: data.notes || null
   }
 
@@ -46,6 +74,15 @@ export async function createProjectWorkItem(data: {
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'work_item_created',
+    entity_type: 'project_work_item',
+    entity_id: result.id,
+    description: `إضافة بند أعمال جديد للمشروع: ${data.item_code}`,
+    metadata: { project_id: data.project_id, item_code: data.item_code },
+  })
+
   revalidatePath(`/projects/${data.project_id}/work-items`)
   return result
 }
@@ -60,6 +97,15 @@ export async function updateProjectWorkItem(id: string, projectId: string, updat
     .single()
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'work_item_updated',
+    entity_type: 'project_work_item',
+    entity_id: id,
+    description: `تعديل بند أعمال`,
+    metadata: { project_id: projectId, updates },
+  })
+
   revalidatePath(`/projects/${projectId}/work-items`)
   return result
 }
@@ -72,6 +118,15 @@ export async function deleteProjectWorkItem(id: string, projectId: string) {
     .eq('id', id)
 
   if (error) throw error
+
+  await writeAuditLog({
+    action: 'work_item_deleted',
+    entity_type: 'project_work_item',
+    entity_id: id,
+    description: `حذف بند أعمال من المشروع`,
+    metadata: { project_id: projectId },
+  })
+
   revalidatePath(`/projects/${projectId}/work-items`)
 }
 
@@ -93,6 +148,30 @@ export async function getSubcontractAgreements(projectId: string) {
   return data
 }
 
+export async function getNextAgreementCode(projectId: string) {
+  const supabase = createClient()
+  const { data } = await supabase
+    .from('subcontract_agreements')
+    .select('agreement_code')
+    .eq('project_id', projectId)
+
+  if (!data || data.length === 0) return 'SUB-001'
+
+  let maxNum = 0
+  for (const row of data) {
+    if (row.agreement_code) {
+      const match = row.agreement_code.match(/\d+/)
+      if (match) {
+        const num = parseInt(match[0], 10)
+        if (num > maxNum) maxNum = num
+      }
+    }
+  }
+
+  const nextNum = maxNum + 1
+  return `SUB-${nextNum.toString().padStart(3, '0')}`
+}
+
 export async function getSubcontractAgreement(id: string) {
   const supabase = createClient()
   const { data: agreement, error } = await supabase
@@ -107,20 +186,7 @@ export async function getSubcontractAgreement(id: string) {
 
   if (error) throw error
 
-  // fetch lines separately for easier mapping
-  const { data: lines, error: lineError } = await supabase
-    .from('subcontract_agreement_lines')
-    .select(`
-      *,
-      work_item:work_item_id(arabic_description, item_code),
-      unit:unit_id(arabic_name)
-    `)
-    .eq('subcontract_agreement_id', id)
-    .order('created_at', { ascending: true })
-
-  if (lineError) throw lineError
-
-  return { ...agreement, lines: lines || [] }
+  return { ...agreement, lines: [] }
 }
 
 export async function createSubcontractAgreement(data: {
@@ -139,9 +205,9 @@ export async function createSubcontractAgreement(data: {
   
   const cleanData = {
     ...data,
-    start_date: data.start_date || null,
-    end_date: data.end_date || null,
-    notes: data.notes || null,
+    start_date: data.start_date && data.start_date.trim() ? data.start_date.trim() : null,
+    end_date: data.end_date && data.end_date.trim() ? data.end_date.trim() : null,
+    notes: data.notes && data.notes.trim() ? data.notes.trim() : null,
   }
 
   const { data: result, error } = await supabase
@@ -166,9 +232,15 @@ export async function createSubcontractAgreement(data: {
 
 export async function updateSubcontractAgreement(id: string, projectId: string, updates: any) {
   const supabase = createClient()
+  const cleanUpdates = {
+    ...updates,
+  }
+  if ('start_date' in cleanUpdates) cleanUpdates.start_date = cleanUpdates.start_date?.trim() || null
+  if ('end_date' in cleanUpdates) cleanUpdates.end_date = cleanUpdates.end_date?.trim() || null
+
   const { data: result, error } = await supabase
     .from('subcontract_agreements')
-    .update(updates)
+    .update(cleanUpdates)
     .eq('id', id)
     .select()
     .single()
@@ -190,38 +262,4 @@ export async function updateSubcontractAgreement(id: string, projectId: string, 
 
 
 // ====== SUBCONTRACT AGREEMENT LINES ====== //
-
-export async function saveSubcontractAgreementLines(agreementId: string, projectId: string, lines: any[]) {
-  const supabase = createClient()
-  
-  // Wipe existing lines and insert new to behave like a standard update
-  // Actually, better to just delete all and insert because lines might be added/removed
-  const { error: delError } = await supabase
-    .from('subcontract_agreement_lines')
-    .delete()
-    .eq('subcontract_agreement_id', agreementId)
-    
-  if (delError) throw delError
-
-  if (lines.length > 0) {
-    const cleanLines = lines.map(line => ({
-      subcontract_agreement_id: agreementId,
-      work_item_id: line.work_item_id,
-      unit_id: line.unit_id,
-      agreed_rate: line.agreed_rate || 0,
-      taaliya_type: line.taaliya_type || null,
-      taaliya_value: line.taaliya_value || null,
-      owner_billable_default: line.owner_billable_default !== false,
-      estimated_quantity: line.estimated_quantity || null,
-      notes: line.notes || null
-    }))
-
-    const { error: insError } = await supabase
-      .from('subcontract_agreement_lines')
-      .insert(cleanLines)
-
-    if (insError) throw insError
-  }
-
-  revalidatePath(`/projects/${projectId}/agreements/${agreementId}`)
-}
+// Lines actions removed

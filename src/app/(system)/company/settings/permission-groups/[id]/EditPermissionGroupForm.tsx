@@ -38,56 +38,6 @@ const MODULE_GROUPS = [
   },
 ]
 
-// ── Toggle switch component ────────────────────────────────────────
-function Toggle({
-  checked,
-  onChange,
-  disabled,
-  size = 'md',
-  onColor = 'bg-primary',
-  offColor = 'bg-border',
-}: {
-  checked: boolean
-  onChange: () => void
-  disabled?: boolean
-  size?: 'sm' | 'md'
-  onColor?: string
-  offColor?: string
-}) {
-  const track = size === 'sm'
-    ? 'w-8 h-4'
-    : 'w-10 h-5'
-  const thumb = size === 'sm'
-    ? 'w-3 h-3 translate-x-0.5'
-    : 'w-3.5 h-3.5 translate-x-0.5'
-  const thumbOn = size === 'sm' ? 'translate-x-4' : 'translate-x-5'
-
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={onChange}
-      className={`
-        relative inline-flex shrink-0 items-center rounded-full border-2 border-transparent
-        transition-colors duration-200 focus:outline-none
-        ${track}
-        ${checked ? onColor : offColor}
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-      `}
-    >
-      <span
-        className={`
-          inline-block rounded-full bg-white shadow transition-transform duration-200
-          ${thumb}
-          ${checked ? thumbOn : ''}
-        `}
-      />
-    </button>
-  )
-}
-
 export default function EditPermissionGroupForm({
   group,
   allPermissions,
@@ -175,14 +125,16 @@ export default function EditPermissionGroupForm({
             {/* Section header — blue background + master toggle */}
             <div className="flex items-center justify-between bg-primary px-5 py-3">
               <h2 className="font-bold text-white text-sm tracking-wide">{mg.label}</h2>
-              <Toggle
-                checked={sectionOn}
-                onChange={() => toggleSection(relevantModules)}
-                disabled={disabled}
-                size="sm"
-                onColor="bg-emerald-400"
-                offColor="bg-white/25"
-              />
+              <div className="flex items-center gap-2">
+                <span className="text-white/80 text-xs font-medium">تحديد الكل</span>
+                <input
+                  type="checkbox"
+                  checked={sectionOn}
+                  onChange={() => toggleSection(relevantModules)}
+                  disabled={disabled}
+                  className="w-4 h-4 text-emerald-500 rounded border-white/30 bg-white/10 focus:ring-emerald-500 cursor-pointer disabled:opacity-50"
+                />
+              </div>
             </div>
 
             {/* Collect all unique action keys for this section for column alignment */}
@@ -233,10 +185,12 @@ export default function EditPermissionGroupForm({
                               return (
                                 <td key={a.key} className="px-4 py-3 text-center">
                                   <div className="flex justify-center">
-                                    <Toggle
+                                    <input
+                                      type="checkbox"
                                       checked={on}
                                       onChange={() => toggle(moduleKey, a.key)}
                                       disabled={disabled}
+                                      className="w-4 h-4 text-primary rounded border-border focus:ring-primary cursor-pointer disabled:opacity-50 transition-colors"
                                     />
                                   </div>
                                 </td>
@@ -267,9 +221,9 @@ export default function EditPermissionGroupForm({
         </div>
       ) : (
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-          <p className="text-sm text-primary font-medium">مجموعة نظام محمية</p>
+          <p className="text-sm text-primary font-medium">قالب نظام محمي</p>
           <p className="mt-1 text-sm text-text-secondary">
-            مجموعات النظام لا يمكن تعديل صلاحياتها لضمان سير العمليات الأساسية بشكل صحيح.
+            قوالب النظام لا يمكن تعديل صلاحياتها لضمان سير العمليات الأساسية بشكل صحيح.
           </p>
         </div>
       )}

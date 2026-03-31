@@ -3,34 +3,34 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { getSubcontractAgreement, updateSubcontractAgreement, saveSubcontractAgreementLines, getProjectWorkItems } from '@/actions/agreements'
+import { getSubcontractAgreement, updateSubcontractAgreement } from '@/actions/agreements'
 import { createClient } from '@/lib/supabase'
 import DatePicker from '@/components/DatePicker'
+
+import { notFound } from 'next/navigation'
 
 export default function AgreementDetailsPage({ params }: { params: { id: string, ag_id: string } }) {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [successMsg, setSuccessMsg] = useState<string | null>(null)
   
   const [agreement, setAgreement] = useState<any>(null)
-  const [workItems, setWorkItems] = useState<any[]>([])
-  const [units, setUnits] = useState<any[]>([])
-  
   // Header form state
   const [headerData, setHeaderData] = useState<any>({})
-  
-  // Lines state
-  const [lines, setLines] = useState<any[]>([])
 
   useEffect(() => {
+    const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(params.ag_id);
+    if (!params.ag_id || !isUUID) {
+      setError('معرف العقد غير صالح');
+      setLoading(false);
+      return;
+    }
+
     async function load() {
       try {
-        const [ag, items, uData] = await Promise.all([
-          getSubcontractAgreement(params.ag_id),
-          getProjectWorkItems(params.id),
-          createClient().from('units').select('id, arabic_name')
-        ])
+        const ag = await getSubcontractAgreement(params.ag_id)
         
         setAgreement(ag)
         setHeaderData({
@@ -41,17 +41,6 @@ export default function AgreementDetailsPage({ params }: { params: { id: string,
           end_date: ag.end_date || '',
           notes: ag.notes || ''
         })
-        
-        // Ensure lines have unique IDs for React mapping
-        const mappedLines = (ag.lines || []).map((l: any, i: number) => ({
-          ...l,
-          _id: l.id || `existing-${i}`,
-          owner_billable_default: l.owner_billable_default ?? true
-        }))
-        setLines(mappedLines)
-        
-        setWorkItems(items || [])
-        setUnits(uData.data || [])
       } catch (err: any) {
         setError('خطأ في تحميل تفاصيل العقد: ' + err.message)
       } finally {
@@ -65,9 +54,13 @@ export default function AgreementDetailsPage({ params }: { params: { id: string,
     e.preventDefault()
     setSaving(true)
     setError(null)
+    setSuccessMsg(null)
     try {
       await updateSubcontractAgreement(params.ag_id, params.id, headerData)
-      alert('تم تحديث بيانات العقد بنجاح')
+      setSuccessMsg('تم تحديث بيانات العقد بنجاح. جاري العودة...')
+      setTimeout(() => {
+        router.push(`/projects/${params.id}/agreements`)
+      }, 1500)
     } catch (err: any) {
       setError('خطأ في حفظ العقد: ' + err.message)
     } finally {
@@ -75,64 +68,7 @@ export default function AgreementDetailsPage({ params }: { params: { id: string,
     }
   }
 
-  async function handleSaveLines() {
-    setSaving(true)
-    setError(null)
-    try {
-      // Validate lines
-      for (const line of lines) {
-        if (!line.work_item_id || !line.unit_id) {
-          throw new Error('يرجى التأكد من اختيار البند والوحدة لجميع السطور')
-        }
-      }
-      await saveSubcontractAgreementLines(params.ag_id, params.id, lines)
-      alert('تم حفظ بنود العقد والفئات بنجاح')
-    } catch (err: any) {
-      setError(err.message || 'خطأ في حفظ البنود')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  function addLine() {
-    setLines([
-      ...lines,
-      {
-        _id: 'new-' + Date.now(),
-        work_item_id: '',
-        unit_id: '',
-        agreed_rate: 0,
-        taaliya_type: agreement?.default_taaliya_type || 'percentage',
-        taaliya_value: agreement?.default_taaliya_value || 5,
-        estimated_quantity: 0,
-        owner_billable_default: true,
-        notes: ''
-      }
-    ])
-  }
-
-  function updateLine(_id: string, field: string, value: any) {
-    setLines(lines.map(l => l._id === _id ? { ...l, [field]: value } : l))
-  }
-
-  function removeLine(_id: string) {
-    setLines(lines.filter(l => l._id !== _id))
-  }
-
-  // Work item auto-population logic
-  function handleWorkItemChange(_id: string, workItemId: string) {
-    const selectedItem = workItems.find(i => i.id === workItemId)
-    setLines(lines.map(l => {
-      if (l._id === _id) {
-        return {
-          ...l,
-          work_item_id: workItemId,
-          unit_id: selectedItem?.default_unit_id || l.unit_id
-        }
-      }
-      return l
-    }))
-  }
+  // No lines logic anymore
 
   if (loading) return <div className="text-sm text-text-secondary">جاري تحميل العقد...</div>
   if (!agreement) return <div className="text-sm text-danger">العقد غير موجود أو لا تملك صلاحية</div>
@@ -159,6 +95,12 @@ export default function AgreementDetailsPage({ params }: { params: { id: string,
       {error && (
         <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
+        </div>
+      )}
+
+      {successMsg && (
+        <div className="rounded-lg border border-success/20 bg-success/10 px-4 py-3 text-sm text-success">
+          {successMsg}
         </div>
       )}
 
@@ -248,153 +190,7 @@ export default function AgreementDetailsPage({ params }: { params: { id: string,
         </form>
       </div>
 
-      {/* LINES SECTION */}
-      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-border">
-          <h2 className="text-lg font-bold text-text-primary">فئات الأعمال المعتمدة (B.O.Q)</h2>
-          <button
-            onClick={addLine}
-            className="rounded-lg bg-primary/10 text-primary px-4 py-2 text-sm font-semibold hover:bg-primary/20 transition-colors"
-          >
-            + إضافة بند أعمال
-          </button>
-        </div>
-
-        <div className="overflow-x-auto hide-scrollbar p-6 pt-2">
-          {lines.length === 0 ? (
-            <div className="py-8 text-center text-sm text-text-secondary border border-dashed border-border rounded-lg">
-              لم يتم إدراج أي بنود أعمال في هذا العقد. اضغط على "إضافة بند أعمال".
-            </div>
-          ) : (
-            <table className="w-full text-right text-sm whitespace-nowrap">
-              <thead className="bg-background-secondary border-b border-border">
-                <tr>
-                  <th className="px-3 py-3 font-semibold text-text-secondary min-w-[250px]">بند الأعمال</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary w-32">الوحدة</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary w-32">الفئة (السعر)</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary w-32">الكمية المقدرة</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary w-32 text-amber-600">نوع التعلية</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary w-28 text-amber-600">قيمة التعلية</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary w-32">يطالب به المالك؟</th>
-                  <th className="px-3 py-3 font-semibold text-text-secondary min-w-[150px]">ملاحظات</th>
-                  <th className="px-3 py-3 w-12"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {lines.map(line => (
-                  <tr key={line._id}>
-                    <td className="px-3 py-2">
-                      <select
-                        required
-                        value={line.work_item_id}
-                        onChange={e => handleWorkItemChange(line._id, e.target.value)}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary"
-                      >
-                        <option value="" disabled>اختر البند...</option>
-                        {workItems.map(wi => (
-                          <option key={wi.id} value={wi.id}>
-                            {wi.item_code ? `[${wi.item_code}] ` : ''}{wi.arabic_description}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        required
-                        value={line.unit_id}
-                        onChange={e => updateLine(line._id, 'unit_id', e.target.value)}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary"
-                      >
-                        <option value="" disabled>اختر الوحدة...</option>
-                        {units.map(u => <option key={u.id} value={u.id}>{u.arabic_name}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        required
-                        value={line.agreed_rate}
-                        onChange={e => updateLine(line._id, 'agreed_rate', Number(e.target.value))}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary font-bold text-navy"
-                        dir="ltr"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={line.estimated_quantity}
-                        onChange={e => updateLine(line._id, 'estimated_quantity', Number(e.target.value))}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary"
-                        dir="ltr"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={line.taaliya_type}
-                        onChange={e => updateLine(line._id, 'taaliya_type', e.target.value)}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary text-amber-600"
-                      >
-                        <option value="percentage">نسبة مئوية (%)</option>
-                        <option value="fixed_amount">مبلغ ثابت (/وحدة)</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={line.taaliya_value}
-                        onChange={e => updateLine(line._id, 'taaliya_value', Number(e.target.value))}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary text-amber-600"
-                        dir="ltr"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={line.owner_billable_default ? 'true' : 'false'}
-                        onChange={e => updateLine(line._id, 'owner_billable_default', e.target.value === 'true')}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary"
-                      >
-                        <option value="true">نعم (يُفوتر)</option>
-                        <option value="false">لا (داخلي)</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <input
-                        type="text"
-                        value={line.notes}
-                        onChange={e => updateLine(line._id, 'notes', e.target.value)}
-                        className="w-full rounded-md border border-border bg-transparent px-2 py-1.5 text-sm outline-none focus:border-primary"
-                      />
-                    </td>
-                    <td className="px-3 py-2 text-left">
-                      <button
-                        type="button"
-                        onClick={() => removeLine(line._id)}
-                        className="text-text-tertiary hover:text-danger transition-colors p-1"
-                        title="حذف البند"
-                      >
-                        ✕
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={handleSaveLines}
-              disabled={saving}
-              className="rounded-lg bg-primary px-8 py-3 text-sm font-bold text-white shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            >
-              {saving ? 'جارٍ الحفظ...' : 'حفظ فئات وبنود الأعمال'}
-            </button>
-          </div>
-        </div>
-      </div>
+      {/* LINES SECTION REMOVED */}
     </div>
   )
 }

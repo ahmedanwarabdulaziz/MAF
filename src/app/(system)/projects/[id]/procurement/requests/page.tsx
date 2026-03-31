@@ -1,8 +1,11 @@
-import Link from 'next/link'
 import { getPurchaseRequests } from '@/actions/procurement'
+import NewPurchaseRequestDialog from './NewPurchaseRequestDialog'
+import PurchaseRequestRowActions from './PurchaseRequestRowActions'
+import { hasPermission } from '@/lib/auth'
 
 export default async function PurchaseRequestsList({ params }: { params: { id: string } }) {
   const prs = await getPurchaseRequests(params.id)
+  const canApprove = await hasPermission('supplier_procurement', 'review')
 
   return (
     <div className="space-y-6">
@@ -13,12 +16,7 @@ export default async function PurchaseRequestsList({ params }: { params: { id: s
             إدارة طلبات توفير المواد واعتمادها للمشروع.
           </p>
         </div>
-        <Link 
-          href={`/projects/${params.id}/procurement/requests/new`}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors"
-        >
-          + طلب شراء جديد
-        </Link>
+        <NewPurchaseRequestDialog projectId={params.id} />
       </div>
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
@@ -60,12 +58,7 @@ export default async function PurchaseRequestsList({ params }: { params: { id: s
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        <Link 
-                          href={`/projects/${params.id}/procurement/requests/${pr.id}`}
-                          className="text-primary hover:text-navy text-sm font-medium"
-                        >
-                          عرض وتفاصيل
-                        </Link>
+                        <PurchaseRequestRowActions pr={pr} projectId={params.id} canApprove={canApprove} />
                       </td>
                     </tr>
                   )

@@ -7,9 +7,7 @@ import { createClient } from '@/lib/supabase'
 const ROLE_OPTIONS = [
   { value: 'owner',         label: 'مالك' },
   { value: 'subcontractor', label: 'مقاول من الباطن' },
-  { value: 'supplier',      label: 'مورد' },
-  { value: 'consultant',    label: 'مستشار' },
-  { value: 'other',         label: 'آخر' },
+  { value: 'supplier',      label: 'مورد' }
 ]
 
 export default function NewPartyPage() {

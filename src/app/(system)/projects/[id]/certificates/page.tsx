@@ -1,8 +1,14 @@
 import Link from 'next/link'
 import { getCertificatesList } from '@/actions/certificates'
+import { getSubcontractAgreements } from '@/actions/agreements'
+import CreateCertificateModal from './CreateCertificateModal'
+import ViewCertificateDialog from './ViewCertificateDialog'
 
 export default async function CertificatesPage({ params }: { params: { id: string } }) {
-  const certificates = await getCertificatesList(params.id)
+  const [certificates, agreements] = await Promise.all([
+    getCertificatesList(params.id),
+    getSubcontractAgreements(params.id)
+  ])
 
   return (
     <div className="space-y-6">
@@ -13,12 +19,7 @@ export default async function CertificatesPage({ params }: { params: { id: strin
             إدارة مستخلصات الأعمال المنجزة والتعليات والحساب الختامي.
           </p>
         </div>
-        <Link 
-          href={`/projects/${params.id}/certificates/new`}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors"
-        >
-          + مستخلص جديد
-        </Link>
+        <CreateCertificateModal projectId={params.id} agreements={agreements || []} />
       </div>
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
@@ -26,12 +27,9 @@ export default async function CertificatesPage({ params }: { params: { id: strin
           {certificates?.length === 0 ? (
             <div className="py-12 text-center">
               <p className="text-text-secondary">لم يتم إصدار أي مستخلصات في هذا المشروع حتى الآن.</p>
-              <Link
-                href={`/projects/${params.id}/certificates/new`}
-                className="mt-4 inline-block text-primary hover:underline text-sm font-medium"
-              >
-                إنشاء أول مستخلص
-              </Link>
+              <div className="mt-4 flex justify-center">
+                <CreateCertificateModal projectId={params.id} agreements={agreements || []} />
+              </div>
             </div>
           ) : (
             <table className="w-full text-right text-sm">
@@ -78,12 +76,11 @@ export default async function CertificatesPage({ params }: { params: { id: strin
                         </span>
                       </td>
                       <td className="px-4 py-4">
-                        <Link 
-                          href={`/projects/${params.id}/certificates/${cert.id}`}
-                          className="text-primary hover:text-navy text-sm font-medium transition-colors"
-                        >
-                          التفاصيل والبنود
-                        </Link>
+                        <ViewCertificateDialog 
+                          certId={cert.id}
+                          projectId={params.id}
+                          status={cert.status}
+                        />
                       </td>
                     </tr>
                   )

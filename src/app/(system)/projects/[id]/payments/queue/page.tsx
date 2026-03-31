@@ -1,5 +1,7 @@
 import Link from 'next/link'
 import { getProjectPayablesQueue } from '@/actions/payments'
+import SupplierInvoiceRowActions from '../../procurement/invoices/SupplierInvoiceRowActions'
+import ViewCertificateModal from './ViewCertificateModal'
 
 export const metadata = {
   title: 'استحقاقات الدفع المعلقة | نظام إدارة المقاولات'
@@ -29,14 +31,6 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
           <p className="mt-1 text-sm text-text-secondary">
             مستخلصات المقاولين وفواتير الموردين المعتمدة والتي لم يتم سدادها بالكامل.
           </p>
-        </div>
-        <div>
-           <Link
-            href={`/projects/${params.id}/payments/new`}
-            className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors"
-          >
-            + تسجيل دفعة جديدة
-          </Link>
         </div>
       </div>
 
@@ -77,6 +71,7 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
                   <th className="px-6 py-4 font-semibold text-text-secondary">المدفوعات السابقة</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">المبلغ المستحق للدفع</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">الحالة</th>
+                  <th className="px-6 py-4 w-16">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -101,11 +96,12 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
                         {calcOutstandingSub(cert).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP
                     </td>
                     <td className="px-6 py-4">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            cert.status === 'partially_paid' ? 'bg-amber-100 text-amber-800' : 'bg-primary/10 text-primary'
-                        }`}>
-                            {cert.status === 'partially_paid' ? 'مدفوع جزئياً' : 'معتمد (قيد الدفع)'}
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-primary/10 text-primary`}>
+                            {cert.status === 'paid_in_full' ? 'مدفوع بالكامل' : 'معتمد (قيد الدفع)'}
                         </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                        <ViewCertificateModal certId={cert.id} agreementId={cert.subcontract_agreement_id} />
                     </td>
                   </tr>
                 ))}
@@ -138,6 +134,7 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
                   <th className="px-6 py-4 font-semibold text-text-secondary">المدفوعات السابقة</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">المبلغ المستحق للدفع</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">الحالة</th>
+                  <th className="px-6 py-4 w-16">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -167,6 +164,9 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
                         }`}>
                             {inv.status === 'partially_paid' ? 'مدفوع جزئياً' : 'مرحّلة (قيد الدفع)'}
                         </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                        <SupplierInvoiceRowActions inv={inv} projectId={params.id} canApprove={false} canWhApprove={false} confirmation={null} />
                     </td>
                   </tr>
                 ))}

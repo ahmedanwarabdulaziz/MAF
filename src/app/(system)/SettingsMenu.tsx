@@ -4,12 +4,13 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const SETTINGS_LINKS = [
+const SETTINGS_LINKS: { href: string; label: string; danger?: boolean }[] = [
   { href: '/company/settings/company',           label: 'بيانات الشركة' },
   { href: '/company/settings/users',             label: 'إدارة المستخدمين' },
   { href: '/company/settings/permission-groups', label: 'مجموعات الصلاحيات' },
   { href: '/company/settings/access-scopes',     label: 'نطاق الوصول' },
   { href: '/company/settings/audit-log',         label: 'سجل النشاط والتدقيق' },
+  { href: '/company/settings/data-reset',        label: '⚠️ إعادة تعيين البيانات', danger: true },
 ]
 
 export default function SettingsMenu() {
@@ -36,23 +37,34 @@ export default function SettingsMenu() {
               </span>
             </div>
             <nav className="flex flex-col py-1">
-              {SETTINGS_LINKS.map((link) => {
+              {SETTINGS_LINKS.map((link, i) => {
                 const active = pathname?.startsWith(link.href)
+                const prevIsDanger = i > 0 && !SETTINGS_LINKS[i-1].danger && link.danger
                 return (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    onClick={() => setOpen(false)}
-                    className={`
-                      px-4 py-2.5 text-sm font-medium transition-colors
-                      ${active
-                        ? 'bg-white/20 text-white'
-                        : 'text-white/80 hover:bg-white/10 hover:text-white'
-                      }
-                    `}
-                  >
-                    {link.label}
-                  </Link>
+                  <div key={link.href}>
+                    {prevIsDanger && (
+                      <div className="mx-4 my-1 border-t border-white/10" />
+                    )}
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setOpen(false)}
+                      className={`
+                        block px-4 py-2.5 text-sm font-medium transition-colors
+                        focus:outline-none focus-visible:bg-white/10 focus-visible:text-white
+                        ${link.danger
+                          ? active
+                            ? 'bg-red-500/30 text-red-200'
+                            : 'text-red-300/80 hover:bg-red-500/20 hover:text-red-200 focus-visible:bg-red-500/20 focus-visible:text-red-200'
+                          : active
+                            ? 'bg-white/20 text-white'
+                            : 'text-white/80 hover:bg-white/10 hover:text-white focus-visible:bg-white/10 focus-visible:text-white'
+                        }
+                      `}
+                    >
+                      {link.label}
+                    </Link>
+                  </div>
                 )
               })}
             </nav>
@@ -65,7 +77,7 @@ export default function SettingsMenu() {
         onClick={() => setOpen((v) => !v)}
         className={`
           w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
-          transition-colors border border-transparent
+          transition-colors border border-transparent focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50
           ${isSettingsActive || open
             ? 'bg-white/15 text-white border-white/20'
             : 'text-white/60 hover:bg-white/10 hover:text-white'

@@ -1,0 +1,118 @@
+  ▲ Next.js 14.2.3
+  - Environments: .env.local
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/37) ...
+   Generating static pages (9/37) 
+   Generating static pages (18/37) 
+   Generating static pages (27/37) 
+ ✓ Generating static pages (37/37)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                          Size     First Load JS
+┌ ○ /                                                248 B          94.1 kB
+├ ○ /_not-found                                      874 B          87.9 kB
+├ ƒ /api/auth/logout                                 0 B                0 B
+├ ƒ /api/debug-session                               0 B                0 B
+├ ƒ /api/seed-permissions                            0 B                0 B
+├ ƒ /company                                         248 B          94.1 kB
+├ ƒ /company/main_warehouse/item-groups              1.24 kB        95.1 kB
+├ ƒ /company/main_warehouse/item-groups/[id]         2.5 kB          156 kB
+├ ƒ /company/main_warehouse/item-groups/new          2.5 kB          156 kB
+├ ƒ /company/main_warehouse/items                    1.87 kB        95.7 kB
+├ ƒ /company/main_warehouse/items/[id]               144 B           159 kB
+├ ƒ /company/main_warehouse/items/new                144 B           159 kB
+├ ƒ /company/main_warehouse/stock-balances           161 B          87.2 kB
+├ ƒ /company/main_warehouse/transfers                248 B          94.1 kB
+├ ƒ /company/main_warehouse/transfers/new            141 B          98.3 kB
+├ ƒ /company/main_warehouse/warehouses               248 B          94.1 kB
+├ ƒ /company/main_warehouse/warehouses/[id]          2.36 kB        96.2 kB
+├ ƒ /company/main_warehouse/warehouses/new           2.36 kB        96.2 kB
+├ ƒ /company/parties                                 1.77 kB        95.6 kB
+├ ƒ /company/parties/[id]                            248 B          94.1 kB
+├ ƒ /company/parties/[id]/edit                       2.68 kB         157 kB
+├ ƒ /company/parties/new                             2.42 kB         150 kB
+├ ƒ /company/projects                                248 B          94.1 kB
+├ ƒ /company/projects/[id]                           248 B          94.1 kB
+├ ƒ /company/projects/new                            4.14 kB         151 kB
+├ ƒ /company/purchases                               248 B          94.1 kB
+├ ƒ /company/purchases/[id]                          4.43 kB        91.5 kB
+├ ƒ /company/purchases/expense-categories            2.49 kB        89.5 kB
+├ ƒ /company/purchases/new                           6.95 kB          94 kB
+├ ƒ /company/purchases/suppliers                     2.47 kB        96.3 kB
+├ ƒ /company/purchases/suppliers/[id]                4.65 kB        98.5 kB
+├ ƒ /company/reports                                 248 B          94.1 kB
+├ ƒ /company/settings/access-scopes                  5.95 kB          93 kB
+├ ƒ /company/settings/audit-log                      3.54 kB        90.6 kB
+├ ƒ /company/settings/company                        161 B          87.2 kB
+├ ƒ /company/settings/permission-groups              1.9 kB         95.7 kB
+├ ƒ /company/settings/permission-groups/[id]         2.62 kB        96.5 kB
+├ ƒ /company/settings/permission-groups/new          1.78 kB        95.6 kB
+├ ƒ /company/settings/users                          2.18 kB          96 kB
+├ ƒ /company/settings/users/[id]                     2.13 kB          96 kB
+├ ƒ /company/settings/users/new                      1.96 kB        95.8 kB
+├ ƒ /company/treasury                                248 B          94.1 kB
+├ ƒ /company/treasury/[account_id]                   2.67 kB        96.5 kB
+├ ƒ /company/treasury/[account_id]/deposit           3.77 kB        97.6 kB
+├ ƒ /company/treasury/[account_id]/edit              2.51 kB        96.4 kB
+├ ƒ /company/treasury/new                            2.41 kB        96.3 kB
+├ ƒ /company/treasury/transfers/new                  4.01 kB        97.9 kB
+├ ○ /login                                           1.53 kB         149 kB
+├ ƒ /projects/[id]                                   248 B          94.1 kB
+├ ƒ /projects/[id]/agreements                        248 B          94.1 kB
+├ ƒ /projects/[id]/agreements/[ag_id]                5.71 kB         160 kB
+├ ƒ /projects/[id]/agreements/new                    4.52 kB         152 kB
+├ ƒ /projects/[id]/certificates                      249 B          94.1 kB
+├ ƒ /projects/[id]/certificates/[cert_id]            3.42 kB        97.3 kB
+├ ƒ /projects/[id]/certificates/new                  4.58 kB        98.4 kB
+├ ƒ /projects/[id]/collections                       249 B          94.1 kB
+├ ƒ /projects/[id]/collections/new                   4.51 kB         158 kB
+├ ƒ /projects/[id]/custody                           249 B          94.1 kB
+├ ƒ /projects/[id]/custody/expenses                  248 B          94.1 kB
+├ ƒ /projects/[id]/custody/expenses/[doc_id]         1.58 kB        95.4 kB
+├ ƒ /projects/[id]/custody/expenses/new              2.08 kB        89.1 kB
+├ ƒ /projects/[id]/custody/new-account               161 B          87.2 kB
+├ ƒ /projects/[id]/cutover                           4.02 kB         151 kB
+├ ƒ /projects/[id]/cutover/custody                   3.13 kB         150 kB
+├ ƒ /projects/[id]/cutover/financials                2.95 kB         150 kB
+├ ƒ /projects/[id]/cutover/owner                     4.58 kB         152 kB
+├ ƒ /projects/[id]/cutover/review                    2.97 kB         150 kB
+├ ƒ /projects/[id]/cutover/subcontractors            3.34 kB         150 kB
+├ ƒ /projects/[id]/cutover/suppliers                 4.62 kB         152 kB
+├ ƒ /projects/[id]/cutover/warehouse                 2.99 kB         150 kB
+├ ƒ /projects/[id]/owner-billing                     249 B          94.1 kB
+├ ƒ /projects/[id]/owner-billing/[doc_id]            1.32 kB        95.2 kB
+├ ƒ /projects/[id]/owner-billing/new                 5.11 kB         159 kB
+├ ƒ /projects/[id]/payments                          246 B          94.1 kB
+├ ƒ /projects/[id]/payments/[voucher_id]             246 B          94.1 kB
+├ ƒ /projects/[id]/payments/new                      5.17 kB          99 kB
+├ ƒ /projects/[id]/payments/queue                    248 B          94.1 kB
+├ ƒ /projects/[id]/procurement/invoices              248 B          94.1 kB
+├ ƒ /projects/[id]/procurement/invoices/[inv_id]     4.06 kB         158 kB
+├ ƒ /projects/[id]/procurement/invoices/new          5.72 kB         160 kB
+├ ƒ /projects/[id]/procurement/requests              248 B          94.1 kB
+├ ƒ /projects/[id]/procurement/requests/[pr_id]      3.04 kB        96.9 kB
+├ ƒ /projects/[id]/procurement/requests/new          5.65 kB         160 kB
+├ ƒ /projects/[id]/procurement/statements            161 B          87.2 kB
+├ ƒ /projects/[id]/project_warehouse/stock-balances  161 B          87.2 kB
+├ ƒ /projects/[id]/project_warehouse/transfers       248 B          94.1 kB
+├ ƒ /projects/[id]/project_warehouse/transfers/new   141 B          98.3 kB
+├ ƒ /projects/[id]/subcontractors                    248 B          94.1 kB
+├ ƒ /projects/[id]/work-items                        2.01 kB        95.9 kB
+├ ƒ /projects/[id]/work-items/[item_id]/edit         2.52 kB         150 kB
+└ ƒ /projects/[id]/work-items/new                    2.52 kB         150 kB
++ First Load JS shared by all                        87.1 kB
+  ├ chunks/660-379d3c4877049754.js                   31.5 kB
+  ├ chunks/e6e143be-6a35682af9ca7a53.js              53.6 kB
+  └ other shared chunks (total)                      1.96 kB
+
+
+ƒ Middleware                                         79.8 kB
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

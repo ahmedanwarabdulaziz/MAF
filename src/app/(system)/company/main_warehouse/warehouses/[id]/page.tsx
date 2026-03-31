@@ -1,6 +1,6 @@
 import { requirePermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase-server'
-import WarehouseForm from '../new/warehouse-form'
+import WarehouseForm from '../WarehouseForm'
 import { getMainCompanyId } from '@/actions/warehouse'
 import { notFound } from 'next/navigation'
 

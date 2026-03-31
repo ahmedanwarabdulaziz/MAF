@@ -108,7 +108,7 @@ export default function DatePicker({
         type="button"
         onClick={() => setOpen(o => !o)}
         className={`
-          flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm w-44 bg-white
+          flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm w-full bg-white
           transition-all duration-150 cursor-pointer
           ${open ? 'border-primary ring-2 ring-primary/15 shadow-sm' : 'border-border hover:border-border/80 hover:bg-background-secondary/30'}
           ${!iso ? 'text-text-secondary' : 'text-text-primary font-medium'}

@@ -6,15 +6,19 @@ import CustomSelect from '@/components/CustomSelect'
 
 interface User { id: string; display_name: string }
 interface Project { id: string; arabic_name: string; project_code: string }
+interface RoleTemplate { id: string; arabic_name: string }
 
 export default function GrantScopeForm({
   users,
   projects,
+  roleTemplates,
 }: {
   users: User[]
   projects: Project[]
+  roleTemplates: RoleTemplate[]
 }) {
   const [userId, setUserId] = useState('')
+  const [roleTemplateId, setRoleTemplateId] = useState('')
   const [giveCompany, setGiveCompany] = useState(false)
   const [giveAllProjects, setGiveAllProjects] = useState(false)
   const [selectedProjects, setSelectedProjects] = useState<Set<string>>(new Set())
@@ -36,6 +40,7 @@ export default function GrantScopeForm({
     setSuccess(null)
 
     if (!userId) return setError('Please select a user')
+    if (!roleTemplateId) return setError('يرجى اختيار القالب الوظيفي')
     if (!giveCompany && !giveAllProjects && selectedProjects.size === 0)
       return setError('Please select at least one scope')
 
@@ -48,13 +53,14 @@ export default function GrantScopeForm({
       scopes.push({ scope_type: 'selected_project', project_id: pid })
     )
 
-    const result = await grantBulkScopesAction(userId, scopes)
+    const result = await grantBulkScopesAction(userId, roleTemplateId, scopes)
     setLoading(false)
 
     if (result.error) return setError(result.error)
 
-    setSuccess(`تم منح ${result.granted} نطاق${result.skipped ? ` (${result.skipped} موجود مسبقاً)` : ''}`)
+    setSuccess(`تم تعيين ${result.granted} نطاق${result.skipped ? ` (${result.skipped} موجود مسبقاً)` : ''}`)
     setUserId('')
+    setRoleTemplateId('')
     setGiveCompany(false)
     setGiveAllProjects(false)
     setSelectedProjects(new Set())
@@ -100,6 +106,19 @@ export default function GrantScopeForm({
             onChange={setUserId}
             placeholder="— Select a user —"
             options={users.map(u => ({ value: u.id, label: u.display_name }))}
+          />
+        </div>
+
+        {/* Role Template selector */}
+        <div className="flex flex-col gap-1.5 max-w-sm">
+          <label className="text-sm font-semibold text-text-primary">
+            القالب الوظيفي <span className="text-danger">*</span>
+          </label>
+          <CustomSelect
+            value={roleTemplateId}
+            onChange={setRoleTemplateId}
+            placeholder="— اختر القالب الوظيفي —"
+            options={roleTemplates.map(r => ({ value: r.id, label: r.arabic_name }))}
           />
         </div>
 
@@ -179,7 +198,7 @@ export default function GrantScopeForm({
             disabled={loading}
             className="rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm"
           >
-            {loading ? 'Granting…' : 'Grant selected scopes'}
+            {loading ? 'جاري التعيين…' : 'حفظ تعيينات المستخدم'}
           </button>
         </div>
       </form>

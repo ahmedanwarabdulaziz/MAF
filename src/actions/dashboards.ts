@@ -36,7 +36,7 @@ export async function getCompanyDashboardMetrics() {
   const { data: subcontractors } = await supabase
     .from('subcontractor_certificates')
     .select('outstanding_amount')
-    .in('status', ['approved', 'partially_paid'])
+    .in('status', ['approved'])  // certificate_status ENUM: approved|paid_in_full (no 'partially_paid')
 
   const totalSubcontractorLiability = subcontractors?.reduce((sum, s) => sum + Number(s.outstanding_amount || 0), 0) || 0
 
@@ -84,7 +84,7 @@ export async function getProjectDashboardMetrics(projectId: string) {
     .from('subcontractor_certificates')
     .select('outstanding_amount')
     .eq('project_id', projectId)
-    .in('status', ['approved', 'partially_paid'])
+    .in('status', ['approved'])  // certificate_status ENUM: approved|paid_in_full (no 'partially_paid')
   const localSubcontractorLiability = subcontractors?.reduce((sum, s) => sum + Number(s.outstanding_amount || 0), 0) || 0
 
   // 4. Receivables (Owner Billed vs Collected)
@@ -138,7 +138,7 @@ export async function getConsolidatedProjectsReport() {
         supabase.from('project_budget_versions').select('project_id, total_estimated_cost').eq('is_active', true),
         supabase.from('owner_billing_certificates').select('project_id, amount, collected_amount').eq('status', 'approved'),
         supabase.from('supplier_invoices').select('project_id, net_amount, paid_to_date').in('status', ['posted', 'partially_paid', 'paid']),
-        supabase.from('subcontractor_certificates').select('project_id, net_amount, paid_to_date').in('status', ['approved', 'partially_paid', 'paid'])
+        supabase.from('subcontractor_certificates').select('project_id, net_amount, paid_to_date').in('status', ['approved', 'paid_in_full'])
     ])
 
     return projects.map(p => {

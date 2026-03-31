@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase-server'
 import { revalidatePath } from 'next/cache'
+import { writeAuditLog } from '@/lib/audit'
 
 interface CreateProjectInput {
   project_code: string
@@ -9,6 +10,7 @@ interface CreateProjectInput {
   english_name?: string | null
   project_onboarding_type: string
   status: string
+  owner_party_id?: string | null
   location?: string | null
   start_date?: string | null
   expected_end_date?: string | null
@@ -49,6 +51,52 @@ export async function createProject(input: CreateProjectInput): Promise<{ id: st
     throw new Error(error.message)
   }
 
+  await writeAuditLog({
+    action: 'create_project',
+    entity_type: 'project',
+    entity_id: data.id,
+    description: `تم إنشاء مشروع جديد: ${input.arabic_name} (${input.project_code})`,
+    metadata: {
+      project_code: input.project_code,
+      arabic_name: input.arabic_name,
+      english_name: input.english_name || input.arabic_name,
+      status: input.status,
+      owner_party_id: input.owner_party_id,
+      project_onboarding_type: input.project_onboarding_type,
+      location: input.location ?? null,
+      start_date: input.start_date ?? null,
+      expected_end_date: input.expected_end_date ?? null,
+      estimated_contract_value: input.estimated_contract_value ?? null,
+    },
+  })
+
   revalidatePath('/company/projects')
+  return { id: data.id }
+}
+
+export async function updateProject(id: string, updates: any) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('projects')
+    .update(updates)
+    .eq('id', id)
+    .select('id')
+    .single()
+
+  if (error) {
+    if (error.message.includes('unique')) throw new Error('رمز المشروع مستخدم بالفعل')
+    throw new Error(error.message)
+  }
+
+  await writeAuditLog({
+    action: 'update_project',
+    entity_type: 'project',
+    entity_id: id,
+    description: `تحديث بيانات المشروع والتخصيصات`,
+    metadata: { updates },
+  })
+
+  revalidatePath('/company/projects')
+  revalidatePath(`/company/projects/${id}`)
   return { id: data.id }
 }

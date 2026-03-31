@@ -5,6 +5,8 @@ import { useState, useRef, useEffect, useId } from 'react'
 export interface SelectOption {
   value: string
   label: string
+  isHeader?: boolean
+  disabled?: boolean
 }
 
 interface CustomSelectProps {
@@ -18,6 +20,7 @@ interface CustomSelectProps {
   disabled?: boolean
   searchable?: boolean
   className?: string
+  dropdownMinWidth?: number
 }
 
 export default function CustomSelect({
@@ -31,31 +34,79 @@ export default function CustomSelect({
   disabled,
   searchable = false,
   className = '',
+  dropdownMinWidth = 220,
 }: CustomSelectProps) {
   const [open, setOpen] = useState(false)
   const [internalValue, setInternalValue] = useState(defaultValue)
   const [searchQuery, setSearchQuery] = useState('')
-  const ref = useRef<HTMLDivElement>(null)
-  
-  const filteredOptions = searchable 
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({})
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const id = useId()
+
+  const filteredOptions = searchable
     ? options.filter(o => o.label.toLowerCase().includes(searchQuery.toLowerCase()))
     : options
-  const id = useId()
 
   const value = controlledValue !== undefined ? controlledValue : internalValue
   const selected = options.find(o => o.value === value)
 
+  const computeStyle = (): React.CSSProperties => {
+    if (!triggerRef.current) return {}
+    const rect = triggerRef.current.getBoundingClientRect()
+    const width = Math.max(rect.width, dropdownMinWidth)
+    const spaceBelow = window.innerHeight - rect.bottom
+    const dropdownHeight = 280
+    const above = spaceBelow < dropdownHeight && rect.top > dropdownHeight
+    return {
+      position: 'fixed',
+      top: above ? rect.top - dropdownHeight : rect.bottom + 4,
+      left: rect.left,
+      width,
+      zIndex: 9999,
+    }
+  }
+
+  const openDropdown = () => {
+    if (disabled) return
+    if (!open) {
+      setDropdownStyle(computeStyle())
+      setOpen(true)
+    } else {
+      setOpen(false)
+      setSearchQuery('')
+    }
+  }
+
   // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const dropdownEl = document.getElementById(`cs-dropdown-${id}`)
+      if (
+        containerRef.current && !containerRef.current.contains(target) &&
+        !(dropdownEl?.contains(target))
+      ) {
         setOpen(false)
         setSearchQuery('')
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [id])
+
+  // Reposition on scroll/resize while open
+  useEffect(() => {
+    if (!open) return
+    const update = () => setDropdownStyle(computeStyle())
+    window.addEventListener('scroll', update, true)
+    window.addEventListener('resize', update)
+    return () => {
+      window.removeEventListener('scroll', update, true)
+      window.removeEventListener('resize', update)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const pick = (val: string) => {
     if (controlledValue === undefined) setInternalValue(val)
@@ -65,21 +116,16 @@ export default function CustomSelect({
   }
 
   return (
-    <div ref={ref} className={`relative ${className}`} id={id}>
-      {/* Hidden input for form submission */}
+    <div ref={containerRef} className={`relative ${className}`} id={id}>
       {name && (
-        <input
-          type="hidden"
-          name={name}
-          value={value}
-          required={required}
-        />
+        <input type="hidden" name={name} value={value} required={required} />
       )}
 
       {/* Trigger button */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => !disabled && setOpen(o => !o)}
+        onClick={openDropdown}
         disabled={disabled}
         className={`
           w-full flex items-center justify-between gap-2
@@ -93,10 +139,9 @@ export default function CustomSelect({
           ${disabled ? 'opacity-50 cursor-not-allowed bg-background-secondary' : 'cursor-pointer'}
         `}
       >
-        <span className={`flex-1 text-right ${!selected ? 'text-text-secondary' : 'text-text-primary font-medium'}`}>
+        <span className={`flex-1 text-right truncate ${!selected ? 'text-text-secondary' : 'text-text-primary font-medium'}`}>
           {selected ? selected.label : placeholder}
         </span>
-        {/* Chevron */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="14" height="14"
@@ -112,20 +157,23 @@ export default function CustomSelect({
         </svg>
       </button>
 
-      {/* Dropdown panel */}
+      {/* Dropdown — fixed position to escape overflow containers */}
       {open && (
         <div
-          className="absolute z-50 w-full mt-1 rounded-xl border border-border bg-white shadow-lg overflow-hidden"
+          id={`cs-dropdown-${id}`}
           style={{
+            ...dropdownStyle,
             animation: 'selectDropdown 120ms cubic-bezier(0.16, 1, 0.3, 1) both',
             transformOrigin: 'top center',
           }}
+          className="rounded-xl border border-border bg-white shadow-xl overflow-hidden"
         >
           {searchable && (
             <div className="p-2 border-b border-border bg-background-secondary/30">
               <input
                 type="text"
-                className="w-full rounded-md border border-border bg-white px-3 py-1.5 text-sm outline-none focus:border-primary transition-colors font-medium"
+                autoFocus
+                className="w-full rounded-md border border-border bg-white px-3 py-1.5 text-sm outline-none focus:border-primary transition-colors"
                 placeholder="بحث..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
@@ -134,7 +182,6 @@ export default function CustomSelect({
             </div>
           )}
           <ul className="max-h-60 overflow-y-auto py-1" role="listbox">
-            {/* Empty/placeholder option */}
             {placeholder && !searchQuery && (
               <li
                 role="option"
@@ -156,16 +203,23 @@ export default function CustomSelect({
             ) : (
               filteredOptions.map(opt => (
                 <li
-                  key={opt.value}
-                  role="option"
+                  key={opt.isHeader ? `header-${opt.label}-${opt.value}` : opt.value}
+                  role={opt.isHeader ? "presentation" : "option"}
                   aria-selected={opt.value === value}
-                  onClick={() => pick(opt.value)}
+                  onClick={(e) => {
+                    if (opt.isHeader || opt.disabled) e.stopPropagation();
+                    else pick(opt.value);
+                  }}
                   className={`
-                    px-3 py-2 text-sm cursor-pointer
-                    hover:bg-background-secondary transition-colors duration-75
-                    ${opt.value === value
+                    px-3 py-2 text-sm 
+                    ${opt.isHeader 
+                      ? 'font-bold bg-background-secondary text-text-primary cursor-default border-y border-border/50 sticky top-0 z-10' 
+                      : opt.disabled 
+                        ? 'opacity-50 cursor-not-allowed text-text-secondary' 
+                        : 'cursor-pointer hover:bg-background-secondary transition-colors duration-75 text-text-primary'}
+                    ${opt.value === value && !opt.isHeader
                       ? 'bg-primary/8 text-primary font-semibold'
-                      : 'text-text-primary'
+                      : ''
                     }
                   `}
                 >

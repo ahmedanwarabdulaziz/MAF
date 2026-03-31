@@ -1,5 +1,19 @@
-import { getCompanyPurchaseInvoices } from './actions'
+import { 
+  getCompanyPurchaseInvoices,
+  getExpenseCategories,
+  getSupplierParties,
+  getMainWarehouses,
+  getItems,
+  getItemGroups,
+  getCompanyCostCenters
+} from './actions'
 import Link from 'next/link'
+import NewPurchaseDialog from './NewPurchaseDialog'
+import ApproveInvoiceButton from './ApproveInvoiceButton'
+import ViewInvoiceModal from './ViewInvoiceModal'
+import EditPurchaseDialog from './EditPurchaseDialog'
+import PayInvoiceDialog from './PayInvoiceDialog'
+import PurchasesFilterBar from './PurchasesFilterBar'
 
 const PlusIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
@@ -20,8 +34,59 @@ const TYPE_LABELS: Record<string, string> = {
   stock_purchase:  'شراء للمخزن',
 }
 
-export default async function CompanyPurchasesPage() {
-  const invoices = await getCompanyPurchaseInvoices()
+function parseDateInput(val: string | undefined): Date | null {
+  if (!val) return null
+  const dmyMatch = val.match(/^(\d{2})-(\d{2})-(\d{4})$/)
+  if (dmyMatch) return new Date(`${dmyMatch[3]}-${dmyMatch[2]}-${dmyMatch[1]}`)
+  const d = new Date(val)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function getDateRange(period: string, dateFrom?: string, dateTo?: string): { from?: string; to?: string } {
+  const now = new Date()
+  if (period === 'this_month') {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    const end   = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
+    return { from: start.toISOString(), to: end.toISOString() }
+  }
+  if (period === 'last_90') {
+    const start = new Date(now); start.setDate(start.getDate() - 90)
+    return { from: start.toISOString() }
+  }
+  if (period === 'this_year') {
+    return { from: new Date(now.getFullYear(), 0, 1).toISOString() }
+  }
+  if (period === 'custom') {
+    const fromD = parseDateInput(dateFrom)
+    const toD   = parseDateInput(dateTo)
+    if (toD) toD.setHours(23, 59, 59, 999)
+    return { from: fromD?.toISOString(), to: toD?.toISOString() }
+  }
+  return {}
+}
+
+export default async function CompanyPurchasesPage({
+  searchParams
+}: {
+  searchParams: { period?: string; date_from?: string; date_to?: string }
+}) {
+  const period = ['this_month', 'last_90', 'this_year', 'all', 'custom'].includes(searchParams.period ?? '') 
+    ? (searchParams.period ?? 'this_month') 
+    : 'this_month'
+  const dateRange = getDateRange(period, searchParams.date_from, searchParams.date_to)
+
+  const [invoices, categories, suppliers, warehouses, items, itemGroups, costCenters] = await Promise.all([
+    getCompanyPurchaseInvoices({ 
+      date_from: dateRange.from, 
+      date_to: dateRange.to 
+    }),
+    getExpenseCategories(),
+    getSupplierParties(),
+    getMainWarehouses(),
+    getItems(),
+    getItemGroups(),
+    getCompanyCostCenters(),
+  ])
 
   const totalNet         = invoices.reduce((s: number, i: Record<string, unknown>) => s + Number(i.net_amount),       0)
   const totalPaid        = invoices.reduce((s: number, i: Record<string, unknown>) => s + Number(i.paid_to_date),     0)
@@ -44,13 +109,14 @@ export default async function CompanyPurchasesPage() {
           >
             أقسام المصروفات
           </Link>
-          <Link
-            href="/company/purchases/new"
-            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition"
-          >
-            <PlusIcon />
-            فاتورة جديدة
-          </Link>
+          <NewPurchaseDialog 
+            categories={categories}
+            suppliers={suppliers}
+            warehouses={warehouses}
+            items={items}
+            itemGroups={itemGroups}
+            costCenters={costCenters}
+          />
         </div>
       </div>
 
@@ -79,6 +145,13 @@ export default async function CompanyPurchasesPage() {
         </div>
       </div>
 
+      {/* Filter Bar */}
+      <PurchasesFilterBar 
+        currentPeriod={period}
+        currentDateFrom={searchParams.date_from}
+        currentDateTo={searchParams.date_to}
+      />
+
       {/* Invoices Table */}
       <div className="bg-white rounded-xl border overflow-hidden">
         {invoices.length === 0 ? (
@@ -98,6 +171,7 @@ export default async function CompanyPurchasesPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-600">الصافي</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-600">المستحق</th>
                 <th className="text-right px-4 py-3 font-medium text-gray-600">الحالة</th>
+                <th className="w-24"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -136,6 +210,30 @@ export default async function CompanyPurchasesPage() {
                       <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${status.class}`}>
                         {status.label}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-left">
+                      <div className="flex items-center justify-end gap-2">
+                        <ViewInvoiceModal id={inv.id} />
+                        {inv.status === 'draft' && (
+                          <EditPurchaseDialog 
+                            invoiceId={inv.id}
+                            categories={categories}
+                            suppliers={suppliers}
+                            warehouses={warehouses}
+                            items={items}
+                            itemGroups={itemGroups}
+                            costCenters={costCenters}
+                          />
+                        )}
+                        <ApproveInvoiceButton id={inv.id} status={inv.status} />
+                        {['posted', 'partially_paid'].includes(inv.status) && Number(inv.outstanding_amount) > 0 && (
+                          <PayInvoiceDialog 
+                            invoiceId={inv.id} 
+                            maxAmount={Number(inv.outstanding_amount)} 
+                            invoiceNo={inv.invoice_no} 
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )

@@ -7,6 +7,9 @@ export const metadata = {
 }
 
 export default async function PaymentVoucherDetailPage({ params }: { params: { id: string, voucher_id: string } }) {
+  const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(params.voucher_id);
+  if (!params.voucher_id || !isUUID) notFound();
+
   const supabase = createClient()
   
   const { data: voucher, error } = await supabase
@@ -83,7 +86,7 @@ export default async function PaymentVoucherDetailPage({ params }: { params: { i
             <div>
                 <span className="block text-xs text-text-secondary mb-1">طريقة الدفع</span>
                 <span className="font-medium text-text-primary">
-                    {voucher.payment_method === 'cash' ? 'نقداً' : voucher.payment_method === 'check' ? 'شيك' : 'تحويل'}
+                    {voucher.payment_method === 'cash' ? 'نقداً' : voucher.payment_method === 'cheque' ? 'شيك' : voucher.payment_method === 'bank_transfer' ? 'تحويل' : voucher.payment_method}
                 </span>
             </div>
             <div>

@@ -17,8 +17,11 @@ export async function getTreasuryAccounts(projectId?: string) {
 
   const { data, error } = await query.order('account_type', { ascending: true })
   
-  if (error) throw error
-  return data
+  if (error) {
+    console.error('getTreasuryAccounts Error:', error.message, 'code:', error.code)
+    return []
+  }
+  return data ?? []
 }
 
 export async function getAccountTransactions(accountId: string) {
@@ -213,6 +216,9 @@ export async function createFinancialAccount(input: {
   })
 
   revalidatePath('/company/treasury')
+  if (input.project_id) {
+    revalidatePath(`/projects/${input.project_id}/treasury`)
+  }
   return { id: data.id }
 }
 
@@ -224,6 +230,18 @@ export async function depositFunds(payload: {
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  // Verify account is a corporate account (no project_id)
+  const { data: account, error: accErr } = await supabase
+    .from('financial_accounts')
+    .select('project_id')
+    .eq('id', payload.account_id)
+    .single()
+
+  if (accErr) throw new Error('الحساب المالي غير موجود')
+  if (account.project_id) {
+    throw new Error('لا يمكن إيداع أموال يدوياً في خزائن المشاريع. يُرجى استخدام شاشة (التحويل الداخلي) لتحويل الأموال من الخزينة الرئيسية إلى هذا المشروع.')
+  }
 
   const { error } = await supabase.from('financial_transactions').insert({
     financial_account_id: payload.account_id,
