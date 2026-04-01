@@ -1,8 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase'
 import {
   createOwnerBillingDocument,
   updateOwnerBillingDocument,
@@ -15,6 +14,7 @@ import {
   getOwnerBillingDetails,
   getOwnerCollectedAmount,
   getOwnerAdvanceTotal,
+  getProjectBasicInfo,
 } from '@/actions/owner_billing'
 import { peekNextDocumentNoByProject } from '@/actions/sequences'
 import DatePicker from '@/components/DatePicker'
@@ -23,6 +23,7 @@ interface BillLine {
   id: string
   line_description: string
   override_description: string
+  unit_name: string           // وحدة القياس (نص حر)
   previous_quantity: number
   quantity: number
   cumulative_quantity: number
@@ -80,6 +81,12 @@ export default function CreateOwnerBillModal({
   const [prevQtys,   setPrevQtys]   = useState<Record<string, number>>({})
   const [selectorType, setSelectorType] = useState<string | null>(null)
 
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   useEffect(() => {
     if (isOpen) loadData()
   }, [isOpen, editDocId])
@@ -92,42 +99,41 @@ export default function CreateOwnerBillModal({
     setPendingMsg(null)
 
     try {
-      const db = createClient()
-      const { data, error: prjErr } = await db
-        .from('projects')
-        .select('owner_party_id, project_code')
-        .eq('id', projectId)
-        .single()
+      // Use server action (admin client) to bypass RLS reliably
+      const projectInfo = await getProjectBasicInfo(projectId)
 
-      if (data?.owner_party_id) {
-        setProjectOwnerId(data.owner_party_id)
-      } else {
+      if (!mountedRef.current) return
+
+      if (!projectInfo?.owner_party_id) {
         setError('تعذر العثور على المالك. يرجى إعداده في بيانات المشروع أولاً.')
         setLoading(false)
         return
       }
 
-      // Load external selector data
-      const [subs, issues, mats, prevqs, col, adv] = await Promise.all([
-        getBillableSubcontractorItems(projectId),
-        getBillableStoreIssues(projectId),
-        getBillableMaterialsOnSite(projectId),
-        getPreviousBilledQuantities(projectId),
-        getOwnerCollectedAmount(projectId),
-        getOwnerAdvanceTotal(projectId),
-      ])
-      setSubItems(subs)
-      setStoreIssues(issues)
-      setMaterials(mats)
-      setPrevQtys(prevqs)
-      setCollected(col)
-      setAdvanceTotal(adv)
-      // نضع الدفعة المقدمة تلقائياً في formData
-      setFormData(prev => ({ ...prev, advance_deduction: adv }))
+      setProjectOwnerId(projectInfo.owner_party_id)
 
       if (editDocId) {
-        // ── EDIT MODE ──────────────────────────────────────────────
-        const docDetails = await getOwnerBillingDetails(editDocId)
+        // ── EDIT MODE: run all in parallel ─────────────────────────
+        const [subs, issues, mats, prevqs, col, adv, docDetails] = await Promise.all([
+          getBillableSubcontractorItems(projectId),
+          getBillableStoreIssues(projectId),
+          getBillableMaterialsOnSite(projectId),
+          getPreviousBilledQuantities(projectId),
+          getOwnerCollectedAmount(projectId),
+          getOwnerAdvanceTotal(projectId),
+          getOwnerBillingDetails(editDocId),
+        ])
+
+        if (!mountedRef.current) return
+
+        setSubItems(subs)
+        setStoreIssues(issues)
+        setMaterials(mats)
+        setPrevQtys(prevqs)
+        setCollected(col)
+        setAdvanceTotal(adv)
+        setFormData(prev => ({ ...prev, advance_deduction: adv }))
+
         if (docDetails) {
           const tax = docDetails.gross_amount > 0
             ? Math.round((docDetails.tax_amount / docDetails.gross_amount) * 100)
@@ -138,12 +144,13 @@ export default function CreateOwnerBillModal({
             end_date:          docDetails.end_date || '',
             notes:             docDetails.notes || '',
             taxRate:           tax || 14,
-            advance_deduction: adv, // دائماً من الدفعات المقدمة الفعلية
+            advance_deduction: adv,
           })
           const editLines: BillLine[] = (docDetails.lines || []).map((l: any) => ({
             id:                   Math.random().toString(),
             line_description:     l.line_description,
             override_description: l.override_description || '',
+            unit_name:            l.unit_name || '',
             previous_quantity:    Number(l.previous_quantity || 0),
             quantity:             Number(l.quantity || 0),
             cumulative_quantity:  Number(l.cumulative_quantity || l.quantity || 0),
@@ -155,30 +162,44 @@ export default function CreateOwnerBillModal({
           }))
           setLines(editLines)
         }
+
       } else {
-        // ── CREATE MODE ────────────────────────────────────────────
-        // Check for pending doc
-        const pendingStatus = await getOwnerBillingPendingStatus(projectId)
+        // ── CREATE MODE: run everything in parallel ─────────────────
+        const [subs, issues, mats, prevqs, col, adv, pendingStatus, inheritedLines, seq] = await Promise.all([
+          getBillableSubcontractorItems(projectId),
+          getBillableStoreIssues(projectId),
+          getBillableMaterialsOnSite(projectId),
+          getPreviousBilledQuantities(projectId),
+          getOwnerCollectedAmount(projectId),
+          getOwnerAdvanceTotal(projectId),
+          getOwnerBillingPendingStatus(projectId),
+          getPreviousOwnerBillingLines(projectId),
+          peekNextDocumentNoByProject(projectId, 'owner_billing_documents', `INV-${projectInfo.project_code || 'PRJ'}`),
+        ])
+
+        if (!mountedRef.current) return
+
+        setSubItems(subs)
+        setStoreIssues(issues)
+        setMaterials(mats)
+        setPrevQtys(prevqs)
+        setCollected(col)
+        setAdvanceTotal(adv)
+        setFormData(prev => ({ ...prev, advance_deduction: adv, document_no: seq || 'تلقائي' }))
+
         if (pendingStatus.hasPending) {
           setHasPending(true)
           setPendingMsg(
             `يوجد فاتورة ${pendingStatus.pendingStatus === 'draft' ? 'كمسودة' : 'بانتظار الاعتماد'} (رقم ${pendingStatus.pendingNo}). يجب اعتمادها أو حذفها أولاً.`
           )
-          setLoading(false)
           return
         }
 
-        // Auto doc number
-        const pCode = data?.project_code || 'PRJ'
-        const seq = await peekNextDocumentNoByProject(projectId, 'owner_billing_documents', `INV-${pCode}`)
-        setFormData(prev => ({ ...prev, document_no: seq || 'تلقائي' }))
-
-        // Seed inherited lines from last approved doc
-        const inheritedLines = await getPreviousOwnerBillingLines(projectId)
         setLines(inheritedLines.map(l => ({
           id:                   Math.random().toString(),
           line_description:     l.line_description,
           override_description: l.override_description || '',
+          unit_name:            l.unit_name || '',
           previous_quantity:    Number(l.previous_quantity || 0),
           quantity:             0,
           cumulative_quantity:  Number(l.previous_quantity || 0),
@@ -190,9 +211,9 @@ export default function CreateOwnerBillModal({
         })))
       }
     } catch (e: any) {
-      setError('تعذر تحميل البيانات: ' + e.message)
+      if (mountedRef.current) setError('تعذر تحميل البيانات: ' + e.message)
     } finally {
-      setLoading(false)
+      if (mountedRef.current) setLoading(false)
     }
   }
 
@@ -203,6 +224,7 @@ export default function CreateOwnerBillModal({
       id: Math.random().toString(),
       line_description:    '',
       override_description:'',
+      unit_name:           '',
       previous_quantity:   0,
       quantity:            0,
       cumulative_quantity: 0,
@@ -216,15 +238,17 @@ export default function CreateOwnerBillModal({
 
   function addSelectedItems(items: any[], type: 'subcontractor' | 'store_issue' | 'material') {
     const newLines: BillLine[] = items.map(item => {
-      let desc = ''
-      let qty  = 0
-      let price = 0
+      let desc      = ''
+      let qty       = 0
+      let price     = 0
+      let unit      = ''
       let isMaterial = false
 
       if (type === 'subcontractor') {
         desc  = item.project_work_items?.arabic_description || 'بند مقاول باطن'
         qty   = Number(item.cumulative_quantity || 0)
         price = Number(item.project_work_items?.owner_price || 0)
+        unit  = item.project_work_items?.units?.arabic_name || ''
       } else if (type === 'store_issue') {
         desc  = item.items?.arabic_name || 'بند مهام أعمال'
         qty   = Number(item.quantity || 0)
@@ -242,6 +266,7 @@ export default function CreateOwnerBillModal({
         id:                   Math.random().toString(),
         line_description:     desc,
         override_description: '',
+        unit_name:            unit,
         previous_quantity:    prevQty,
         quantity:             currentQty,
         cumulative_quantity:  prevQty + currentQty,
@@ -309,6 +334,7 @@ export default function CreateOwnerBillModal({
       const mappedLines = lines.map(l => ({
         line_description:     l.line_description || l.override_description,
         override_description: l.override_description || undefined,
+        unit_name:            l.unit_name || undefined,
         previous_quantity:    l.previous_quantity,
         quantity:             l.quantity,
         cumulative_quantity:  l.cumulative_quantity,
@@ -487,6 +513,7 @@ export default function CreateOwnerBillModal({
                     <thead className="bg-background-secondary border-b border-border text-text-secondary">
                       <tr>
                         <th className="px-4 py-3 font-semibold min-w-[250px]">الوصف</th>
+                          <th className="px-4 py-3 font-semibold w-[80px] text-center text-text-secondary">وحدة</th>
                         <th className="px-4 py-3 font-semibold w-[100px] text-center bg-green-50/60 text-green-700">كمية سابقة</th>
                         <th className="px-4 py-3 font-semibold w-[100px] text-center bg-blue-50/60 text-navy">كمية حالية</th>
                         <th className="px-4 py-3 font-semibold w-[90px] text-center bg-slate-50/60">تراكمي كمية</th>
@@ -500,7 +527,7 @@ export default function CreateOwnerBillModal({
                     <tbody className="divide-y divide-border">
                       {lines.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-4 py-12 text-center text-text-secondary">
+                          <td colSpan={9} className="px-4 py-12 text-center text-text-secondary">
                             لا توجد بنود. استخدم الأزرار أعلاه لإضافة بنود الفاتورة.
                           </td>
                         </tr>
@@ -533,6 +560,17 @@ export default function CreateOwnerBillModal({
                                 {line.is_material_on_site && <span className="inline-block px-2 text-[10px] font-bold bg-amber-100 text-amber-800 rounded w-max mt-1">تشوينات</span>}
                               </div>
                             )}
+                          </td>
+
+                          {/* Unit */}
+                          <td className="px-2 py-3 text-center">
+                            <input
+                              type="text"
+                              placeholder="م²"
+                              value={line.unit_name}
+                              onChange={e => updateLine(line.id, 'unit_name', e.target.value)}
+                              className="w-16 rounded border border-border/50 bg-transparent px-1 py-1.5 text-xs text-center text-text-secondary outline-none focus:border-primary"
+                            />
                           </td>
 
                           {/* Previous Qty */}

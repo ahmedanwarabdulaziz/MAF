@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { getProjectWorkItems, deleteProjectWorkItem } from '@/actions/agreements'
 import NewWorkItemDialog from './NewWorkItemDialog'
 import EditWorkItemDialog from './EditWorkItemDialog'
+import ImportWorkItemsDialog from './ImportWorkItemsDialog'
 
 export default function ProjectWorkItemsPage({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -47,7 +48,10 @@ export default function ProjectWorkItemsPage({ params }: { params: { id: string 
             إدارة البنود الخاصة بالمشروع والمستخدمة في عقود مقاولي الباطن والمستخلصات.
           </p>
         </div>
-        <NewWorkItemDialog projectId={params.id} onSuccess={fetchItems} />
+        <div className="flex items-center gap-3">
+          <ImportWorkItemsDialog projectId={params.id} onSuccess={fetchItems} />
+          <NewWorkItemDialog projectId={params.id} onSuccess={fetchItems} />
+        </div>
       </div>
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">

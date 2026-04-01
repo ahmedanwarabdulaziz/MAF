@@ -8,6 +8,16 @@ import { revalidatePath } from 'next/cache'
 // OWNER BILLING DOCUMENTS
 // -------------------------------------------------------------------
 
+export async function getProjectBasicInfo(projectId: string) {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('projects')
+    .select('owner_party_id, project_code')
+    .eq('id', projectId)
+    .single()
+  return data
+}
+
 export async function getOwnerBillingDocuments(projectId?: string) {
   const supabase = createAdminClient()
   let query = supabase.from('owner_billing_documents').select(`
@@ -95,6 +105,7 @@ export async function getPreviousOwnerBillingLines(projectId: string): Promise<a
     // Carry forward: previous = cumulative from last cert, current = 0
     line_description:     l.line_description,
     override_description: l.override_description || '',
+    unit_name:            l.unit_name || '',
     previous_quantity:    Number(l.cumulative_quantity || l.quantity || 0),
     quantity:             0,
     cumulative_quantity:  Number(l.cumulative_quantity || l.quantity || 0),
@@ -128,6 +139,21 @@ export async function getOwnerAdvanceTotal(projectId: string): Promise<number> {
     .eq('collection_type', 'advance')
 
   return (data || []).reduce((s, r) => s + Number(r.received_amount || 0), 0)
+}
+
+// إجمالي آخر مستخلص (النظام تراكمي — آخر فاتورة = الإجمالي الكامل)
+export async function getLatestOwnerBillingGross(projectId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('owner_billing_documents')
+    .select('gross_amount')
+    .eq('project_id', projectId)
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  return Number(data?.gross_amount || 0)
 }
 
 // -------------------------------------------------------------------
@@ -408,7 +434,8 @@ export async function recordOwnerCollection(payload: {
   reference_no?: string,
   treasury_id?: string,
   collection_type?: 'regular' | 'advance',
-  notes?: string
+  notes?: string,
+  attachments?: string[]
 }) {
   // نجيب الـ user من الـ client العادي (اللي بيحمل JWT)
   const { data: { user } } = await createClient().auth.getUser()
@@ -429,6 +456,7 @@ export async function recordOwnerCollection(payload: {
       financial_account_id:        payload.treasury_id || null,
       collection_type:             payload.collection_type || 'regular',
       notes:                       payload.notes || null,
+      attachments:                 payload.attachments || [],
       created_by:                  user?.id,
     }])
     .select()
@@ -528,7 +556,8 @@ export async function getBillableSubcontractorItems(projectId: string) {
       project_work_items (
         item_code,
         arabic_description,
-        owner_price
+        owner_price,
+        units:default_unit_id ( arabic_name )
       ),
       subcontractor_certificates!inner (
         project_id,

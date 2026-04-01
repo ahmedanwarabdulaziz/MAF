@@ -3,7 +3,7 @@
 import { useState, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { getOwnerCollections } from '@/actions/owner_billing'
+import { getOwnerCollections, getLatestOwnerBillingGross } from '@/actions/owner_billing'
 import NewCollectionModal from './NewCollectionModal'
 
 export default function CollectionsDashboard({ params }: { params: { id: string } }) {
@@ -22,14 +22,8 @@ export default function CollectionsDashboard({ params }: { params: { id: string 
     try {
       const db = createClient()
 
-      // 1. Totals from owner_billing_documents (approved)
-      const { data: docs } = await db
-        .from('owner_billing_documents')
-        .select('net_amount, status')
-        .eq('project_id', params.id)
-        .in('status', ['approved', 'paid'])
-
-      const totalBilled = (docs || []).reduce((s, d) => s + Number(d.net_amount || 0), 0)
+      // 1. Latest invoice gross_amount via server action (admin client bypasses RLS)
+      const totalBilled = await getLatestOwnerBillingGross(params.id)
 
       // 2. Collections
       const cols = await getOwnerCollections(params.id)
@@ -114,6 +108,7 @@ export default function CollectionsDashboard({ params }: { params: { id: string 
                     <th className="px-4 py-3 font-semibold text-text-secondary">المبلغ المُحصَّل</th>
                     <th className="px-4 py-3 font-semibold text-text-secondary">طريقة الدفع</th>
                     <th className="px-4 py-3 font-semibold text-text-secondary">المرجع</th>
+                    <th className="px-4 py-3 font-semibold text-text-secondary">المرفقات</th>
                     <th className="px-4 py-3 font-semibold text-text-secondary">ملاحظات</th>
                   </tr>
                 </thead>
@@ -142,6 +137,17 @@ export default function CollectionsDashboard({ params }: { params: { id: string 
                            col.payment_method === 'cheque'        ? 'شيك بنكي' : col.payment_method}
                         </td>
                         <td className="px-4 py-3 text-text-secondary dir-ltr">{col.reference_no || '—'}</td>
+                        <td className="px-4 py-3">
+                          {col.attachments && col.attachments.length > 0 ? (
+                            <div className="flex gap-1 flex-wrap justify-end">
+                              {col.attachments.map((url: string, idx: number) => (
+                                <a key={idx} href={url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-primary/5 hover:bg-primary/10 text-primary rounded-md transition-colors inline-block" title={`مرفق ${idx + 1}`}>
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                                </a>
+                              ))}
+                            </div>
+                          ) : <span className="text-text-secondary text-xs">—</span>}
+                        </td>
                         <td className="px-4 py-3 text-text-secondary text-xs max-w-xs truncate">{col.notes || '—'}</td>
                       </tr>
                     )

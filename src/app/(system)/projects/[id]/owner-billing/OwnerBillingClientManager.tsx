@@ -1,14 +1,24 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import CreateOwnerBillModal from './CreateOwnerBillModal'
 import ViewOwnerBillModal from './ViewOwnerBillModal'
-import { updateOwnerBillingStatus } from '@/actions/owner_billing'
+import { updateOwnerBillingStatus, getOwnerBillingDocuments } from '@/actions/owner_billing'
 import { useRouter } from 'next/navigation'
 
-export default function OwnerBillingClientManager({ documents, projectId }: { documents: any[], projectId: string }) {
+export default function OwnerBillingClientManager({ projectId }: { projectId: string }) {
   const router = useRouter()
-  
+
+  const [documents,  setDocuments]  = useState<any[]>([])
+  const [dataLoading, setDataLoading] = useState(true)
+
+  useEffect(() => {
+    setDataLoading(true)
+    getOwnerBillingDocuments(projectId)
+      .then(data => setDocuments(data || []))
+      .catch(console.error)
+      .finally(() => setDataLoading(false))
+  }, [projectId])
   const [viewDocId, setViewDocId] = useState<string | null>(null)
   
   const [editDocId, setEditDocId] = useState<string | null>(null)
@@ -40,7 +50,9 @@ export default function OwnerBillingClientManager({ documents, projectId }: { do
       setApprovingDocId(confirmApproveDocId)
       await updateOwnerBillingStatus(confirmApproveDocId, 'approved', projectId)
       setNotification({ type: 'success', message: 'تم اعتماد الفاتورة وتغيير حالتها بنجاح' })
-      router.refresh()
+      // Re-fetch data locally instead of router.refresh()
+      const updated = await getOwnerBillingDocuments(projectId)
+      setDocuments(updated || [])
     } catch (err: any) {
       setNotification({ type: 'error', message: err.message || 'حدث خطأ غير معروف' })
     } finally {
@@ -90,7 +102,12 @@ export default function OwnerBillingClientManager({ documents, projectId }: { do
 
       <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden">
         <div className="overflow-x-auto hide-scrollbar">
-          {documents?.length === 0 ? (
+          {dataLoading ? (
+            <div className="py-16 flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-4 border-border border-t-primary rounded-full animate-spin" />
+              <p className="text-text-secondary text-sm">جاري تحميل الفواتير...</p>
+            </div>
+          ) : documents?.length === 0 ? (
             <div className="py-12 text-center text-text-secondary">لا توجد فواتير مصدرة للمالك بعد.</div>
           ) : (
             <table className="w-full text-right text-sm">
@@ -187,7 +204,10 @@ export default function OwnerBillingClientManager({ documents, projectId }: { do
         projectId={projectId}
         editDocId={editDocId}
         isOpenProp={isUpsertOpen}
-        onCloseProp={() => setIsUpsertOpen(false)}
+        onCloseProp={() => {
+          setIsUpsertOpen(false)
+          getOwnerBillingDocuments(projectId).then(data => setDocuments(data || []))
+        }}
       />
 
       <ViewOwnerBillModal

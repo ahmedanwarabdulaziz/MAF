@@ -131,6 +131,74 @@ export async function deleteProjectWorkItem(id: string, projectId: string) {
 }
 
 
+export async function getOtherProjects(currentProjectId: string) {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('projects')
+    .select('id, arabic_name, project_code')
+    .neq('id', currentProjectId)
+    .order('arabic_name', { ascending: true })
+
+  if (error) throw error
+  return data
+}
+
+export async function importWorkItems(targetProjectId: string, itemIds: string[]) {
+  const supabase = createClient()
+  
+  // 1. Get the original items
+  const { data: sourceItems, error: fetchErr } = await supabase
+    .from('project_work_items')
+    .select('*')
+    .in('id', itemIds)
+
+  if (fetchErr) throw fetchErr
+  if (!sourceItems || sourceItems.length === 0) return
+
+  // Need company ID from the target project to link them properly
+  const { data: project } = await supabase
+    .from('projects')
+    .select('company_id')
+    .eq('id', targetProjectId)
+    .single()
+
+  const companyId = project?.company_id
+
+  // 2. Prepare new items, removing IDs, timestamps, and updating project_id
+  const newItems = sourceItems.map(item => ({
+    project_id: targetProjectId,
+    company_id: companyId || item.company_id,
+    item_code: item.item_code,
+    arabic_description: item.arabic_description,
+    english_description: item.english_description,
+    default_unit_id: item.default_unit_id,
+    owner_price: item.owner_price,
+    subcontractor_price: item.subcontractor_price,
+    notes: item.notes,
+  }))
+
+  // 3. Insert new items
+  const { error: insertErr } = await supabase
+    .from('project_work_items')
+    .insert(newItems)
+
+  if (insertErr) {
+    if (insertErr.message.includes('unique')) throw new Error('بعض أكواد البنود موجودة بالفعل في هذا المشروع. يرجى مراجعة وتعديل الأكواد قبل الاستيراد.')
+    throw insertErr
+  }
+
+  await writeAuditLog({
+    action: 'work_items_imported',
+    entity_type: 'project_work_item',
+    entity_id: targetProjectId,
+    description: `تم استيراد ${sourceItems.length} بنود أعمال من مشروع آخر.`,
+    metadata: { target_project_id: targetProjectId, items_count: sourceItems.length },
+  })
+
+  revalidatePath(`/projects/${targetProjectId}/work-items`)
+}
+
+
 // ====== SUBCONTRACT AGREEMENTS ====== //
 
 export async function getSubcontractAgreements(projectId: string) {

@@ -29,7 +29,7 @@ export default function ViewCertificateDialog({
   const [advanceTotal, setAdvanceTotal] = useState(0)  // الدفعات المقدمة للمقاول
   const [taxRate,      setTaxRate]      = useState(0)  // الضريبة % (0 = لا ضريبة)
 
-  const [loading,     setLoading]     = useState(true)
+  const [loading,     setLoading]     = useState(false)
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState<string | null>(null)
   const [successMsg,  setSuccessMsg]  = useState<string | null>(null)
@@ -39,8 +39,13 @@ export default function ViewCertificateDialog({
   const [quickApproveConfirm, setQuickApproveConfirm] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
-  const openModal = () => { setIsOpen(true); load(true) }
+  const openModal = () => setIsOpen(true)
   const closeModal = () => { setIsOpen(false); router.refresh() }
+
+  // Load data whenever the dialog opens
+  useEffect(() => {
+    if (isOpen) load(true)
+  }, [isOpen])
 
   useEffect(() => {
     if (searchParams.get('openCert') === certId && !isOpen) {

@@ -40,6 +40,7 @@ export default function ViewOwnerBillModal({
   const [approving,setApproving]= useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [error,    setError]    = useState<string | null>(null)
+  const [taxRate,  setTaxRate]  = useState(0)  // الضريبة % — ديناميكي
 
   useEffect(() => {
     if (isOpen && docId) {
@@ -49,11 +50,22 @@ export default function ViewOwnerBillModal({
         getOwnerBillingDetails(docId),
         getOwnerCollectedAmount(projectId),
       ])
-        .then(([data, col]) => { setDoc(data); setCollected(col) })
+        .then(([data, col]) => {
+          setDoc(data)
+          setCollected(col)
+          // استرجاع نسبة الضريبة من البيانات المحفوظة
+          if (data?.gross_amount > 0 && data?.tax_amount > 0) {
+            const savedRate = Math.round((data.tax_amount / (data.gross_amount - (data.advance_deduction || 0))) * 100)
+            setTaxRate(savedRate || 14)
+          } else {
+            setTaxRate(0)
+          }
+        })
         .catch(err => setError('حدث خطأ أثناء جلب التفاصيل: ' + err.message))
         .finally(() => setLoading(false))
     } else {
       setDoc(null)
+      setTaxRate(0)
     }
   }, [isOpen, docId, projectId])
 
@@ -81,8 +93,12 @@ export default function ViewOwnerBillModal({
     const rate = Number(l.disbursement_rate ?? 100)
     return s + (Number(l.cumulative_quantity || 0) * Number(l.unit_price || 0) * (rate / 100))
   }, 0)
-  const totalRetention = totalCumulativeGross - totalCumulativeEntitled
-  const remaining      = Math.max(0, totalCumulativeEntitled - collected)
+  const totalRetention  = totalCumulativeGross - totalCumulativeEntitled
+  const advDeduction    = Number(doc?.advance_deduction || 0)
+  const netDue          = Math.max(0, totalCumulativeGross - collected)
+  const taxAmount       = (netDue - advDeduction) * (taxRate / 100)
+  const netFinalCalc    = netDue - advDeduction - taxAmount - totalRetention
+  const remaining       = Math.max(0, totalCumulativeEntitled - collected)
 
   const ownerName = doc?.owner
     ? (Array.isArray(doc.owner) ? doc.owner[0]?.arabic_name : doc.owner?.arabic_name)
@@ -142,22 +158,22 @@ export default function ViewOwnerBillModal({
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
                   <p className="text-xs font-semibold text-text-secondary mb-1">الإجمالي التراكمي</p>
-                  <p className="text-xl font-bold text-navy dir-ltr text-right">{totalCumulativeGross.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م</p>
+                  <p className="text-xl font-bold text-navy dir-ltr text-right">{totalCumulativeGross.toLocaleString('en-US', { maximumFractionDigits: 2 })} ج.م</p>
                   <p className="text-xs text-text-tertiary mt-1">Σ (كمية تراكمية × سعر)</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
                   <p className="text-xs font-semibold text-text-secondary mb-1">المبالغ المسددة</p>
-                  <p className="text-xl font-bold text-amber-600 dir-ltr text-right">{collected.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م</p>
+                  <p className="text-xl font-bold text-amber-600 dir-ltr text-right">{collected.toLocaleString('en-US', { maximumFractionDigits: 2 })} ج.م</p>
                   <p className="text-xs text-text-tertiary mt-1">من سندات التحصيل المعتمدة</p>
                 </div>
                 <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
                   <p className="text-xs font-semibold text-text-secondary mb-1">ضمان أعمال (Retention)</p>
-                  <p className="text-xl font-bold text-danger/80 dir-ltr text-right">{totalRetention.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م</p>
+                  <p className="text-xl font-bold text-danger/80 dir-ltr text-right">{totalRetention.toLocaleString('en-US', { maximumFractionDigits: 2 })} ج.م</p>
                   <p className="text-xs text-text-tertiary mt-1">التراكمي − المستحق</p>
                 </div>
                 <div className="bg-success/5 rounded-xl border-2 border-success p-5 shadow-sm">
                   <p className="text-xs font-semibold text-success mb-1">صافي المستحق</p>
-                  <p className="text-2xl font-black text-success dir-ltr text-right">{remaining.toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م</p>
+                  <p className="text-2xl font-black text-success dir-ltr text-right">{remaining.toLocaleString('en-US', { maximumFractionDigits: 2 })} ج.م</p>
                   <p className="text-xs text-success/70 mt-1">المستحق − المسدد</p>
                 </div>
               </div>
@@ -197,13 +213,14 @@ export default function ViewOwnerBillModal({
                       <thead className="bg-background-secondary border-b border-border">
                         <tr>
                           <th className="px-3 py-3 font-semibold text-text-secondary min-w-[220px]">البيان</th>
-                          <th className="px-3 py-3 font-semibold text-green-700 bg-green-50/60 text-center w-24">كمية سابقة</th>
-                          <th className="px-3 py-3 font-semibold text-navy bg-blue-50/60 text-center w-24">كمية حالية</th>
-                          <th className="px-3 py-3 font-semibold text-text-secondary bg-slate-50/60 text-center w-24">تراكمي</th>
-                          <th className="px-3 py-3 font-semibold text-text-secondary text-center w-28">سعر المالك</th>
-                          <th className="px-3 py-3 font-semibold text-amber-700 bg-amber-50/50 text-center w-20">صرف %</th>
-                          <th className="px-3 py-3 font-semibold text-navy bg-navy/5 text-center w-32">إجمالي تراكمي</th>
-                          <th className="px-3 py-3 font-semibold text-success bg-success/5 text-center w-32">مستحق تراكمي</th>
+                          <th className="px-3 py-3 font-semibold text-text-secondary text-center w-16 border-r border-border">وحدة</th>
+                          <th className="px-3 py-3 font-semibold text-text-secondary text-center w-28 border-r border-border">سعر المالك</th>
+                          <th className="px-3 py-3 font-semibold text-green-700 bg-green-50/60 text-center w-24 border-r border-border">كمية سابقة</th>
+                          <th className="px-3 py-3 font-semibold text-navy bg-blue-50/60 text-center w-24 border-r border-border">كمية حالية</th>
+                          <th className="px-3 py-3 font-semibold text-text-secondary bg-slate-50/60 text-center w-24 border-r border-border">تراكمي كمية</th>
+                          <th className="px-3 py-3 font-semibold text-navy bg-navy/5 text-center w-32 border-r border-border">قيمة تراكمية</th>
+                          <th className="px-3 py-3 font-semibold text-amber-700 bg-amber-50/50 text-center w-20 border-r border-border">صرف %</th>
+                          <th className="px-3 py-3 font-semibold text-success bg-success/5 text-center w-32 border-r border-border">مستحق تراكمي</th>
                           <th className="px-3 py-3 font-semibold text-danger/70 text-center w-24">محجوز</th>
                         </tr>
                       </thead>
@@ -225,14 +242,18 @@ export default function ViewOwnerBillModal({
                                   <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">تشوينات</span>
                                 )}
                               </td>
-                              <td className="px-3 py-2.5 text-text-secondary dir-ltr text-center font-mono bg-green-50/20">{Number(line.previous_quantity || 0).toLocaleString()}</td>
-                              <td className="px-3 py-2.5 text-navy font-bold dir-ltr text-center bg-blue-50/20">{Number(line.quantity || 0).toLocaleString()}</td>
-                              <td className="px-3 py-2.5 text-text-primary font-bold dir-ltr text-center bg-slate-50/30">{Number(line.cumulative_quantity || 0).toLocaleString()}</td>
-                              <td className="px-3 py-2.5 text-text-secondary dir-ltr text-center">{Number(line.unit_price || 0).toLocaleString()}</td>
-                              <td className="px-3 py-2.5 text-amber-700 font-bold dir-ltr text-center bg-amber-50/30">{rate}%</td>
-                              <td className="px-3 py-2.5 text-navy font-bold dir-ltr text-center bg-navy/5">{cumulAmt.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
-                              <td className="px-3 py-2.5 text-success font-bold dir-ltr text-center bg-success/5">{cumulEnt.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
-                              <td className="px-3 py-2.5 text-danger/70 dir-ltr text-center">{retention.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</td>
+                              {/* Unit */}
+                              <td className="px-3 py-2.5 text-text-secondary text-center border-r border-border text-xs">
+                                {line.unit_name || '—'}
+                              </td>
+                              <td className="px-3 py-2.5 text-text-secondary dir-ltr text-center border-r border-border font-bold text-navy">{Number(line.unit_price || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2.5 text-text-secondary dir-ltr text-center font-mono bg-green-50/20 border-r border-border">{Number(line.previous_quantity || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2.5 text-navy font-bold dir-ltr text-center bg-blue-50/20 border-r border-border">{Number(line.quantity || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2.5 text-text-primary font-bold dir-ltr text-center bg-slate-50/30 border-r border-border">{Number(line.cumulative_quantity || 0).toLocaleString()}</td>
+                              <td className="px-3 py-2.5 text-navy font-bold dir-ltr text-center bg-navy/5 border-r border-border">{cumulAmt.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                              <td className="px-3 py-2.5 text-amber-700 font-bold dir-ltr text-center bg-amber-50/30 border-r border-border">{rate}%</td>
+                              <td className="px-3 py-2.5 text-success font-bold dir-ltr text-center bg-success/5 border-r border-border">{cumulEnt.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                              <td className="px-3 py-2.5 text-danger/70 dir-ltr text-center">{retention.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
                             </tr>
                           )
                         })}
@@ -242,48 +263,70 @@ export default function ViewOwnerBillModal({
                 </div>
               </div>
 
-              {/* FINAL ACCOUNT SUMMARY — 7-step waterfall */}
-              <div className="rounded-xl border border-border overflow-hidden shadow-sm">
-                <div className="px-5 py-3 bg-navy">
-                  <h3 className="text-xs font-bold text-white/70 uppercase tracking-wider">موقف الحساب</h3>
-                </div>
-                <div className="bg-navy divide-y divide-white/10">
-                  {/* 1 */}
-                  <div className="flex justify-between items-center px-5 py-3">
-                    <span className="text-sm text-white/80">إجمالي المستخلص التراكمي</span>
-                    <span className="dir-ltr font-bold text-white">{totalCumulativeGross.toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</span>
+              {/* FINAL ACCOUNT SUMMARY — موقف الحساب ديناميكي */}
+              <div className="flex items-start justify-end">
+                <div className="w-96 rounded-xl border border-border overflow-hidden shadow-sm">
+                  {/* Header + Tax Input */}
+                  <div className="px-5 py-3 bg-navy flex items-center justify-between">
+                    <h3 className="text-xs font-bold text-white/70 uppercase tracking-wider">موقف الحساب</h3>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-white/50">ضريبة %</span>
+                      <input
+                        type="number" step="1" min="0" max="100"
+                        value={taxRate}
+                        onChange={e => setTaxRate(Number(e.target.value) || 0)}
+                        className="w-14 bg-white/10 border border-white/20 rounded px-2 py-0.5 text-xs text-center text-white outline-none focus:border-white/50 dir-ltr"
+                      />
+                    </div>
                   </div>
-                  {/* 2 */}
-                  <div className="flex justify-between items-center px-5 py-3">
-                    <span className="text-sm text-white/60">يُخصم: ما سبق صرفه</span>
-                    <span className="dir-ltr text-white/60">({collected.toLocaleString('ar-EG', { maximumFractionDigits: 2 })})</span>
-                  </div>
-                  {/* 3 = subtotal */}
-                  <div className="flex justify-between items-center px-5 py-3 bg-white/5">
-                    <span className="text-sm font-semibold text-white">المستحق</span>
-                    <span className="dir-ltr font-bold text-white">{Math.max(0, totalCumulativeGross - collected).toLocaleString('ar-EG', { maximumFractionDigits: 2 })}</span>
-                  </div>
-                  {/* 4 */}
-                  <div className="flex justify-between items-center px-5 py-3">
-                    <span className="text-sm text-white/60">يُخصم: اهلاك الدفعة المقدمة</span>
-                    <span className="dir-ltr text-white/60">({Number(doc.advance_deduction || 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 })})</span>
-                  </div>
-                  {/* 5 */}
-                  <div className="flex justify-between items-center px-5 py-3">
-                    <span className="text-sm text-white/60">يُخصم: الضريبة</span>
-                    <span className="dir-ltr text-white/60">({Number(doc.tax_amount || 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 })})</span>
-                  </div>
-                  {/* 6 */}
-                  <div className="flex justify-between items-center px-5 py-3">
-                    <span className="text-sm text-white/60">يُخصم: ضمان الأعمال</span>
-                    <span className="dir-ltr text-white/60">({totalRetention.toLocaleString('ar-EG', { maximumFractionDigits: 2 })})</span>
-                  </div>
-                  {/* 7 = net */}
-                  <div className="flex justify-between items-center px-5 py-4 border-t-2 border-white/20 bg-white/5">
-                    <span className="text-base font-bold text-white">صافي المستحق</span>
-                    <span className={`dir-ltr text-xl font-black ${(doc.net_amount || 0) >= 0 ? 'text-[#4ade80]' : 'text-red-400'}`}>
-                      {Number(doc.net_amount || 0).toLocaleString('ar-EG', { maximumFractionDigits: 2 })} ج.م
-                    </span>
+                  <div className="bg-navy divide-y divide-white/10">
+                    {/* 1 */}
+                    <div className="flex justify-between items-center px-5 py-3">
+                      <span className="text-sm text-white/80">إجمالي المستخلص التراكمي</span>
+                      <span className="dir-ltr font-bold text-white">{totalCumulativeGross.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    {/* 2 */}
+                    <div className="flex justify-between items-center px-5 py-3">
+                      <span className="text-sm text-white/60">يُخصم: ما سبق صرفه</span>
+                      <span className="dir-ltr text-white/60">({collected.toLocaleString('en-US', { maximumFractionDigits: 2 })})</span>
+                    </div>
+                    {/* 3 = subtotal */}
+                    <div className="flex justify-between items-center px-5 py-3 bg-white/5">
+                      <span className="text-sm font-semibold text-white">المستحق</span>
+                      <span className="dir-ltr font-bold text-white">{netDue.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+                    </div>
+                    {/* 4 */}
+                    {advDeduction > 0 && (
+                      <div className="flex justify-between items-center px-5 py-3">
+                        <div className="flex flex-col">
+                          <span className="text-sm text-white/70">يُخصم: إهلاك الدفعة المقدمة</span>
+                          <span className="text-[10px] text-white/40 mt-0.5">محسوب من الدفعات المقدمة المستلمة</span>
+                        </div>
+                        <span className="dir-ltr text-amber-300 font-bold">({advDeduction.toLocaleString('en-US', { maximumFractionDigits: 2 })})</span>
+                      </div>
+                    )}
+                    {/* 5 */}
+                    {taxRate > 0 && (
+                      <div className="flex justify-between items-center px-5 py-3">
+                        <span className="text-sm text-white/60">يُخصم: الضريبة ({taxRate}%)</span>
+                        <span className="dir-ltr text-white/60">({taxAmount.toLocaleString('en-US', { maximumFractionDigits: 2 })})</span>
+                      </div>
+                    )}
+                    {/* 6 */}
+                    <div className="flex justify-between items-center px-5 py-3">
+                      <div className="flex flex-col">
+                        <span className="text-sm text-white/70">يُخصم: محتجزات نسبة الصرف</span>
+                        <span className="text-[10px] text-white/40 mt-0.5">المبالغ غير المستحقة بناءً على نسب الصرف</span>
+                      </div>
+                      <span className="dir-ltr text-white/60">({totalRetention.toLocaleString('en-US', { maximumFractionDigits: 2 })})</span>
+                    </div>
+                    {/* 7 = net */}
+                    <div className="flex justify-between items-center px-5 py-4 border-t-2 border-white/20 bg-white/5">
+                      <span className="text-base font-bold text-white">صافي المستحق</span>
+                      <span className={`dir-ltr text-xl font-black ${netFinalCalc >= 0 ? 'text-[#4ade80]' : 'text-red-400'}`}>
+                        {netFinalCalc.toLocaleString('en-US', { maximumFractionDigits: 2 })} ج.م
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

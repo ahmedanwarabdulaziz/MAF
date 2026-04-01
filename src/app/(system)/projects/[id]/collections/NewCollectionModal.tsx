@@ -46,6 +46,7 @@ export default function NewCollectionModal({ projectId, isOpen, onClose }: Props
   const [projectOwnerId, setProjectOwnerId] = useState<string | null>(null)
   const [accounts,       setAccounts]       = useState<{ id: string; name: string; type: string }[]>([])
   const [kind,           setKind]           = useState<CollectionKind>('regular')
+  const [attachments,    setAttachments]    = useState<File[]>([])
 
   const [formData, setFormData] = useState({
     received_amount:           0,
@@ -61,6 +62,7 @@ export default function NewCollectionModal({ projectId, isOpen, onClose }: Props
     setError(null)
     setSaving(false)
     setKind('regular')
+    setAttachments([])
     setFormData({
       received_amount:           0,
       received_date:             new Date().toISOString().split('T')[0],
@@ -119,6 +121,28 @@ export default function NewCollectionModal({ projectId, isOpen, onClose }: Props
     setSaving(true)
     setError(null)
 
+    let uploadedUrls: string[] = []
+    
+    // Upload files
+    if (attachments.length > 0) {
+      const db = createClient()
+      for (const file of attachments) {
+        const ext = file.name.split('.').pop() || 'tmp'
+        const path = `collections/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+        
+        const { error: uploadErr } = await db.storage.from('owner_collections').upload(path, file)
+        
+        if (!uploadErr) {
+          const { data } = db.storage.from('owner_collections').getPublicUrl(path)
+          uploadedUrls.push(data.publicUrl)
+        } else {
+          setError('تعذر رفع المرفقات: ' + uploadErr.message)
+          setSaving(false)
+          return
+        }
+      }
+    }
+
     try {
       await recordOwnerCollection({
         project_id:      projectId,
@@ -130,6 +154,7 @@ export default function NewCollectionModal({ projectId, isOpen, onClose }: Props
         treasury_id:     formData.financial_account_id,
         collection_type: kind,
         notes:           (kind === 'advance' ? '[دفعة مقدمة] ' : '') + (formData.notes || ''),
+        attachments:     uploadedUrls,
       })
       router.refresh()
       onClose()
@@ -258,6 +283,46 @@ export default function NewCollectionModal({ projectId, isOpen, onClose }: Props
                   <strong>دفعة مقدمة:</strong> سيُسجَّل هذا المبلغ في سجل التحصيلات وسيُتاح خصمه تدريجياً عبر خانة "اهلاك الدفعة المقدمة" في كل مستخلص.
                 </div>
               )}
+
+              {/* Attachments */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-semibold text-text-primary flex items-center justify-between">
+                  <span>المرفقات (اختياري)</span>
+                  <span className="text-xs text-text-secondary font-normal">الحد الأقصى 5 ملفات</span>
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept=".jpg,.jpeg,.png,.pdf"
+                  onChange={(e) => {
+                    const selected = Array.from(e.target.files || [])
+                    if (selected.length + attachments.length > 5) {
+                      setError('يمكنك إرفاق 5 ملفات كحد أقصى.')
+                    } else {
+                      setAttachments(prev => [...prev, ...selected].slice(0, 5))
+                    }
+                    e.target.value = '' // reset input
+                  }}
+                  className="rounded-lg border border-border bg-white p-1 text-sm outline-none transition-colors file:ml-4 file:py-2 file:px-4 file:border-0 file:font-semibold file:bg-primary/5 file:text-primary hover:file:bg-primary/10 file:rounded-md file:cursor-pointer text-text-secondary cursor-pointer"
+                />
+                
+                {attachments.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    {attachments.map((file, i) => (
+                      <div key={i} className="flex items-center justify-between bg-background border border-border rounded-lg px-3 py-2 text-sm shadow-sm">
+                        <div className="flex flex-row items-center gap-2 max-w-[80%]">
+                          <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                          <span className="truncate" dir="ltr">{file.name}</span>
+                          <span className="text-xs text-text-secondary">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                        </div>
+                        <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-danger hover:text-white transition-colors p-1.5 rounded-md hover:bg-danger/90">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               {/* Notes */}
               <div className="flex flex-col gap-1.5">
