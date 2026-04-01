@@ -135,7 +135,7 @@ export async function updatePurchaseRequest(prId: string, payload: {
       notes: payload.notes || null,
     })
     .eq('id', prId)
-    .eq('status', 'draft') // Only allow editing if it's still a draft
+    .in('status', ['draft', 'pending_approval']) // Allow editing if it's draft or pending_approval
 
   if (headerErr) throw headerErr
 
@@ -819,9 +819,9 @@ export async function getPendingApprovals() {
   };
 }
 
-export async function getDiscrepancyInvoices(projectId: string) {
+export async function getDiscrepancyInvoices(projectId?: string) {
   const supabase = createClient()
-  const { data, error } = await supabase.from('supplier_invoices')
+  let query = supabase.from('supplier_invoices')
     .select(`
       *,
       supplier:supplier_party_id(arabic_name),
@@ -832,10 +832,14 @@ export async function getDiscrepancyInvoices(projectId: string) {
         unit_price
       )
     `)
-    .eq('project_id', projectId)
     .eq('discrepancy_status', 'pending')
     .order('invoice_date', { ascending: false })
     
+  if (projectId) {
+    query = query.eq('project_id', projectId)
+  }
+  
+  const { data, error } = await query
   if (error) throw error
   return data
 }
@@ -1139,6 +1143,7 @@ export async function resolveInvoiceDiscrepancy(invoiceId: string) {
   })
 
   revalidatePath(`/projects/${inv.project_id}/procurement/discrepancies`)
+  revalidatePath(`/company/purchases/discrepancies`)
   revalidatePath(`/projects/${inv.project_id}/procurement/invoices/${invoiceId}`)
 }
 

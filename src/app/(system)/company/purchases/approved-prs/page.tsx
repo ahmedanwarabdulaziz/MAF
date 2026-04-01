@@ -70,7 +70,7 @@ export default async function ApprovedPRsList() {
                           }
                         />
                         <Link 
-                          href={`/projects/${pr.project_id}/procurement/requests/${pr.id}`}
+                          href={`?view_pr=${pr.id}&projectId=${pr.project_id}`}
                           className="rounded border border-border px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-navy hover:border-navy/40 transition-colors"
                         >
                           عرض تفاصيل

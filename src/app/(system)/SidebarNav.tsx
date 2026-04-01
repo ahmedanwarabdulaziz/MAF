@@ -5,12 +5,10 @@ import { useParams, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { getDiscrepancyInvoices } from '@/actions/procurement'
 
-function DiscrepancyBadge({ projectId }: { projectId: string }) {
+function DiscrepancyBadge({ projectId }: { projectId?: string }) {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    if (projectId) {
-      getDiscrepancyInvoices(projectId).then(data => setCount(data?.length || 0)).catch(() => {})
-    }
+    getDiscrepancyInvoices(projectId || undefined).then(data => setCount(data?.length || 0)).catch(() => {})
   }, [projectId])
 
   if (count === 0) return null
@@ -203,19 +201,23 @@ export default function SidebarNav({ isSuperAdmin, allowedModules, companyName }
       {can('corporate_expenses') && (
         <>
           <div className={subLabel}>مشتريات الشركة</div>
-          <Link href="/company/purchases" className={`${linkBase} ${isActive('/company/purchases') && !isActive('/company/purchases/expense-categories') && !isActive('/company/purchases/suppliers') && !isActive('/company/purchases/approved-prs') ? linkActive : linkInactive}`}>
-            مصروفات ومشتريات {companyName || 'الشركة'}
+          <Link href="/company/purchases" className={`${linkBase} ${isActive('/company/purchases') && !isActive('/company/purchases/expense-categories') && !isActive('/company/purchases/suppliers') && !isActive('/company/purchases/approved-prs') && !isActive('/company/purchases/invoices') && !isActive('/company/purchases/discrepancies') ? linkActive : linkInactive}`}>
+            مصروفات ومشتريات ماف للمقاولات
+          </Link>
+          <Link href="/company/approvals" className={`${linkBase} ${isActive('/company/approvals') ? linkActive : linkInactive}`}>
+            اعتمادات طلبات الشراء المعلقة
           </Link>
           <Link href="/company/purchases/approved-prs" className={`${linkBase} ${isActive('/company/purchases/approved-prs') ? linkActive : linkInactive}`}>
             طلبات الشراء المعتمدة
           </Link>
+          <Link href="/company/purchases/invoices" className={`${linkBase} ${isActive('/company/purchases/invoices') ? linkActive : linkInactive}`}>
+            فواتير الموردين (الشركة الرئيسية)
+          </Link>
+          <Link href="/company/purchases/discrepancies" className={`${linkBase} flex items-center justify-between ${isActive('/company/purchases/discrepancies') ? linkActive : linkInactive}`}>
+            <span>فروق الاستلامات الشاملة</span>
+            <DiscrepancyBadge projectId="" />
+          </Link>
         </>
-      )}
-
-      {can('dashboard') && (
-        <Link href="/company/approvals" className={`${linkBase} ${isActive('/company/approvals') ? linkActive : linkInactive}`}>
-          الاعتمادات المعلقة
-        </Link>
       )}
 
       {(can('consolidated_reports') || can('treasury') || can('main_warehouse')) && (

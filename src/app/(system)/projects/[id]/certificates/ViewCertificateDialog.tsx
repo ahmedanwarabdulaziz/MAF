@@ -63,10 +63,27 @@ export default function ViewCertificateDialog({
         getPartyAdvanceBalance(c.project_id, c.subcontractor_party_id, 'contractor'),
       ])
 
+      let pricesUpdatedGlobal = false
+
       setLines((boqGrid || []).map((l: any, i: number) => {
         const line = { ...l, _id: l._id || `existing-${i}` }
-        // Fallback for inherited lines that were seeded with 0 totals directly from the DB
-        if (Number(line.previous_quantity) > 0 && !Number(line.cumulative_amount)) {
+        let pricesUpdatedForLine = false
+
+        // Auto-sync prices if editable
+        if (c.status === 'draft' || c.status === 'pending_approval') {
+          const wi = items?.find((item: any) => item.id === line.project_work_item_id)
+          if (wi) {
+            const newRate = Number(wi.subcontractor_price || 0)
+            if (Number(line.agreed_rate) !== newRate) {
+              line.agreed_rate = newRate
+              pricesUpdatedForLine = true
+              pricesUpdatedGlobal = true
+            }
+          }
+        }
+
+        // Recalculate if price changed OR fallback for inherited lines that were seeded with 0 totals directly from the DB
+        if (pricesUpdatedForLine || (Number(line.previous_quantity) > 0 && !Number(line.cumulative_amount))) {
           const qty = Number(line.previous_quantity) + Number(line.current_quantity || 0)
           const rate = Number(line.agreed_rate || 0)
           const disb = Number(line.taaliya_value || line.disbursement_rate || c?.agreement?.default_taaliya_value || 90)
@@ -79,6 +96,11 @@ export default function ViewCertificateDialog({
         }
         return line
       }))
+
+      if (pricesUpdatedGlobal) {
+        setSuccessMsg('تم تحديث أسعار بعض البنود لتطابق أحدث تسعير مسجل. يرجى النقر على "حفظ وإعادة الحساب".')
+        setTimeout(() => setSuccessMsg(null), 8000)
+      }
       setWorkItems(items || [])
       setPaidAmount(paid)
       setAdvanceTotal(advBal?.balance_remaining ?? advBal?.total_advanced ?? 0)

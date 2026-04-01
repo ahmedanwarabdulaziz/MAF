@@ -38,7 +38,8 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
            total_return: 0,
            total_outstanding: 0,
            advance_balance: 0,
-           projects: new Set<string>()
+           projects: new Set<string>(),
+           has_pending_discrepancies: false
         }
       }
       const g = acc[row.supplier_party_id]
@@ -49,6 +50,7 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
       g.total_return = (g.total_return || 0) + Number(row.total_return || 0)
       g.total_outstanding += Number(row.total_outstanding || 0)
       g.advance_balance = (g.advance_balance || 0) + Number(row.advance_balance || 0)
+      g.has_pending_discrepancies = g.has_pending_discrepancies || !!row.has_pending_discrepancies
       g.projects.add(row.scope)
       return acc
     }, {} as Record<string, any>)
@@ -231,7 +233,17 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
             {filtered.map((sup: any) => (
               <tr key={sup.id} className="hover:bg-background-secondary/30 transition-colors">
                 <td className="px-5 py-4">
-                  <div className="font-semibold text-text-primary text-base">{sup.name}</div>
+                  <div className="font-semibold text-text-primary text-base flex flex-col items-start gap-1">
+                    <span>{sup.name}</span>
+                    {sup.has_pending_discrepancies && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-danger/10 text-danger border border-danger/20 whitespace-nowrap">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 ml-1">
+                          <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        فروق استلامات معلقة
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-5 py-4">
                   <div className="flex flex-wrap gap-1.5 max-w-[220px]">

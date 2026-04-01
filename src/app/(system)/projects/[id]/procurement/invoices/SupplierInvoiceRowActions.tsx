@@ -301,13 +301,13 @@ export default function SupplierInvoiceRowActions({ inv: rowInv, projectId, canA
         </button>
       )}
 
-      <button
-        onClick={openModal}
+      <Link
+        href={`?view_invoice=${rowInv.id}&projectId=${projectId}`}
         title="عرض التفاصيل"
-        className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors"
+        className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors flex items-center justify-center"
       >
         <EyeIcon />
-      </button>
+      </Link>
 
       {/* Details Dialog */}
       {isOpen && (

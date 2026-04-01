@@ -1,12 +1,12 @@
 import Link from 'next/link'
 import { getSupplierInvoices } from '@/actions/procurement'
-import NewSupplierInvoiceDialog from './NewSupplierInvoiceDialog'
-import SupplierInvoiceRowActions from './SupplierInvoiceRowActions'
+import SupplierInvoiceRowActions from '@/app/(system)/projects/[id]/procurement/invoices/SupplierInvoiceRowActions'
 import { hasPermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase'
 
-export default async function SupplierInvoicesList({ params, searchParams }: { params: { id: string }, searchParams: { filter?: string } }) {
-  const invoices = await getSupplierInvoices(params.id)
+export default async function GlobalSupplierInvoicesList({ searchParams }: { searchParams: { filter?: string } }) {
+  // Fetch all invoices for the company
+  const invoices = await getSupplierInvoices(undefined)
   
   const canApprove = await hasPermission('supplier_procurement', 'review')
   const canWhApprove = await hasPermission('project_warehouse', 'review')
@@ -35,18 +35,17 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
     <div className="space-y-6 pb-24 mx-auto max-w-7xl">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">فواتير الموردين (Supplier Invoices)</h1>
+          <h1 className="text-2xl font-bold text-navy">فواتير الموردين (الشركة الرئيسية)</h1>
           <p className="mt-1 text-sm text-text-secondary">
-            متابعة فواتير التوريد، الاستلام في المخازن، والاعتمادات.
+            متابعة لجميع فواتير الموردين وتوريدات المخازن عبر جميع المشاريع.
           </p>
         </div>
-        <NewSupplierInvoiceDialog projectId={params.id} />
       </div>
 
       {/* STAT CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Link 
-          href={isFilteredPending ? `/projects/${params.id}/procurement/invoices` : `/projects/${params.id}/procurement/invoices?filter=pending`}
+          href={isFilteredPending ? `/company/purchases/invoices` : `/company/purchases/invoices?filter=pending`}
           className={`rounded-xl border p-5 shadow-sm transition-colors text-right relative overflow-hidden group ${isFilteredPending ? 'bg-amber-50 border-amber-300' : 'bg-white border-border hover:border-amber-300'}`}
         >
           <div className={`absolute top-0 right-0 w-1 h-full ${isFilteredPending ? 'bg-amber-500' : 'bg-transparent group-hover:bg-amber-400'}`}></div>
@@ -57,7 +56,7 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
           </div>
         </Link>
         <Link 
-          href={isFilteredPartial ? `/projects/${params.id}/procurement/invoices` : `/projects/${params.id}/procurement/invoices?filter=partial`}
+          href={isFilteredPartial ? `/company/purchases/invoices` : `/company/purchases/invoices?filter=partial`}
           className={`rounded-xl border p-5 shadow-sm transition-colors text-right relative overflow-hidden group ${isFilteredPartial ? 'bg-indigo-50 border-indigo-300' : 'bg-white border-border hover:border-indigo-300'}`}
         >
           <div className={`absolute top-0 right-0 w-1 h-full ${isFilteredPartial ? 'bg-indigo-500' : 'bg-transparent group-hover:bg-indigo-400'}`}></div>
@@ -68,7 +67,7 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
           </div>
         </Link>
         <div className="rounded-xl border border-border bg-white p-5 shadow-sm text-right">
-          <p className="text-xs font-semibold text-text-secondary mb-1">إجمالي الفواتير</p>
+          <p className="text-xs font-semibold text-text-secondary mb-1">إجمالي الفواتير للشركة</p>
           <p className="text-2xl font-bold text-navy">{invoices?.length || 0}</p>
         </div>
       </div>
@@ -82,6 +81,7 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
               <thead className="bg-background-secondary border-b border-border">
                 <tr>
                   <th className="px-4 py-4 font-semibold text-text-secondary">رقم الفاتورة</th>
+                  <th className="px-4 py-4 font-semibold text-navy">المشروع</th>
                   <th className="px-4 py-4 font-semibold text-text-secondary">المورد</th>
                   <th className="px-4 py-4 font-semibold text-text-secondary">التاريخ</th>
                   <th className="px-4 py-4 font-semibold text-text-secondary">الصافي للدفع</th>
@@ -92,9 +92,16 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
               <tbody className="divide-y divide-border">
                 {filteredInvoices?.map((inv) => {
                   const sup: any = Array.isArray(inv.supplier) ? inv.supplier[0] : inv.supplier
+                  const proj: any = Array.isArray(inv.project) ? inv.project[0] : inv.project
+
                   return (
                     <tr key={inv.id} className="hover:bg-background-secondary/50 transition-colors">
-                      <td className="px-4 py-4 font-medium text-navy dir-ltr text-right">{inv.invoice_no}</td>
+                      <td className="px-4 py-4 font-medium text-navy dir-ltr text-right">
+                        <Link href={`?view_invoice=${inv.id}&projectId=${inv.project_id}`} className="hover:underline">
+                          {inv.invoice_no}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-4 font-bold text-navy">{proj?.arabic_name || '---'}</td>
                       <td className="px-4 py-4 text-text-primary font-medium">{sup?.arabic_name || 'غير محدد'}</td>
                       <td className="px-4 py-4 text-text-secondary dir-ltr text-right">{inv.invoice_date}</td>
                       <td className="px-4 py-4 font-bold text-success dir-ltr text-right">
@@ -116,7 +123,7 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
                       <td className="px-4 py-4">
                         <SupplierInvoiceRowActions 
                           inv={inv} 
-                          projectId={params.id} 
+                          projectId={inv.project_id} 
                           canApprove={canApprove}
                           canWhApprove={canWhApprove}
                           confirmation={confirmations[inv.id]}

@@ -824,7 +824,7 @@ export async function bulkPaySupplier(supplierPartyId: string, payload: {
 export async function getGlobalSupplierBalances() {
   const supabase = await createClient()
   
-  const [companyRes, projectsRes, pRes] = await Promise.all([
+  const [companyRes, projectsRes, pRes, discRes] = await Promise.all([
     supabase.from('company_purchase_invoices').select(`
       supplier_party_id,
       gross_amount,
@@ -836,11 +836,14 @@ export async function getGlobalSupplierBalances() {
       supplier:parties!supplier_party_id(id, arabic_name)
     `).in('status', ['posted', 'partially_paid', 'paid']),
     supabase.from('supplier_account_summaries_view').select('*'),
-    supabase.from('projects').select('id, arabic_name')
+    supabase.from('projects').select('id, arabic_name'),
+    supabase.from('supplier_invoices').select('supplier_party_id').eq('discrepancy_status', 'pending')
   ])
 
   if (companyRes.error) throw new Error(companyRes.error.message)
   if (projectsRes.error) throw new Error(projectsRes.error.message)
+  
+  const suppliersWithDisc = new Set(discRes?.data?.map(x => x.supplier_party_id) || [])
   console.log("=== DEBUG SUPPLIER BALANCES ===");
   console.log("Company invoices aggregated:", companyRes.data?.length);
   console.log("Projects invoices aggregated:", projectsRes.data?.length);
@@ -859,7 +862,8 @@ export async function getGlobalSupplierBalances() {
         supplier_party_id: sId,
         supplier_name: (row.supplier as any)?.arabic_name || 'غير معروف',
         scope: 'الشركة الرئيسية',
-        total_gross: 0, total_tax: 0, total_discount: 0, total_net: 0, total_paid: 0, total_outstanding: 0, advance_balance: 0, total_return: 0
+        total_gross: 0, total_tax: 0, total_discount: 0, total_net: 0, total_paid: 0, total_outstanding: 0, advance_balance: 0, total_return: 0,
+        has_pending_discrepancies: suppliersWithDisc.has(sId)
       }
     }
     compMap[sId].total_gross += Number(row.gross_amount || 0)
@@ -887,6 +891,7 @@ export async function getGlobalSupplierBalances() {
       total_outstanding: Number(row.total_outstanding || 0),
       advance_balance: 0,
       total_return: Number(row.total_returned_net || 0),
+      has_pending_discrepancies: suppliersWithDisc.has(row.supplier_party_id)
     })
   })
 
@@ -960,6 +965,7 @@ export async function getGlobalSupplierBalances() {
           total_return: 0,
           total_outstanding: 0,
           advance_balance: 0,
+          has_pending_discrepancies: suppliersWithDisc.has(pId)
         })
       }
       
@@ -1012,6 +1018,7 @@ export async function getGlobalSupplierBalances() {
         total_return: 0,
         total_outstanding: 0,
         advance_balance: Number(adv.balance_remaining),
+        has_pending_discrepancies: suppliersWithDisc.has(adv.party_id)
       })
     }
   }

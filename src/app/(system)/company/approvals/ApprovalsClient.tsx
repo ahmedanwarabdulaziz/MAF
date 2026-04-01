@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import Link from 'next/link'
+import PurchaseRequestDialog from '@/components/procurement/PurchaseRequestDialog'
 
 export default function ApprovalsClient({ initialData }: { initialData: any }) {
   const { prs, invoices } = initialData
@@ -45,6 +46,9 @@ export default function ApprovalsClient({ initialData }: { initialData: any }) {
 
   return (
     <div className="space-y-6">
+      <Suspense fallback={null}>
+        <PurchaseRequestDialog />
+      </Suspense>
       <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-border shadow-sm">
         <label className="text-sm font-semibold text-text-primary">تصفية بالمشروع:</label>
         <select 
@@ -82,7 +86,7 @@ export default function ApprovalsClient({ initialData }: { initialData: any }) {
                     <h3 className="text-sm font-bold text-text-secondary mb-3 border-b border-border/50 pb-2">طلبات الشراء (Purchase Requests)</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {group.prs.map((pr: any) => (
-                         <Link key={pr.id} href={`/projects/${pid}/procurement/requests/${pr.id}`} className="block border border-border rounded-lg p-4 hover:border-primary/40 transition-colors bg-slate-50/30">
+                         <Link key={pr.id} href={`?view_pr=${pr.id}&projectId=${pid}`} className="block border border-border rounded-lg p-4 hover:border-primary/40 transition-colors bg-slate-50/30">
                            <div className="flex justify-between items-start mb-2">
                              <span className="font-mono text-sm font-bold text-text-primary">{pr.request_no}</span>
                              <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">بانتظار الاعتماد</span>
@@ -103,7 +107,7 @@ export default function ApprovalsClient({ initialData }: { initialData: any }) {
                       {group.invoices.map((inv: any) => {
                          const sup = Array.isArray(inv.supplier) ? inv.supplier[0] : inv.supplier;
                          return (
-                           <Link key={inv.id} href={`/projects/${pid}/procurement/invoices/${inv.id}`} className="block border border-border rounded-lg p-4 hover:border-primary/40 transition-colors bg-blue-50/30">
+                           <Link key={inv.id} href={`?view_invoice=${inv.id}&projectId=${pid}`} className="block border border-border rounded-lg p-4 hover:border-primary/40 transition-colors bg-blue-50/30">
                              <div className="flex justify-between items-start mb-2">
                                <span className="font-mono text-sm font-bold text-text-primary">{inv.invoice_no}</span>
                                <span className="text-[10px] bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded font-semibold">بانتظار المطابقة</span>
@@ -127,3 +131,4 @@ export default function ApprovalsClient({ initialData }: { initialData: any }) {
     </div>
   )
 }
+
