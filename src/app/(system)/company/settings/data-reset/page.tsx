@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
-import { getResetObjectCounts } from './actions'
 import DataResetClient from './DataResetClient'
 
 export const metadata = {
@@ -8,7 +7,6 @@ export const metadata = {
 }
 
 export default async function DataResetPage() {
-  // Super-admin only
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
@@ -23,8 +21,6 @@ export default async function DataResetPage() {
     redirect('/company/settings/company')
   }
 
-  const counts = await getResetObjectCounts()
-
   return (
     <div className="space-y-6">
       <div className="border-b border-border pb-4">
@@ -34,7 +30,7 @@ export default async function DataResetPage() {
         </p>
       </div>
 
-      <DataResetClient initialCounts={counts} />
+      <DataResetClient />
     </div>
   )
 }

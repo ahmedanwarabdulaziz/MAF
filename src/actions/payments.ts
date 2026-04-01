@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { writeAuditLog } from '@/lib/audit'
 
@@ -231,4 +232,320 @@ export async function getPaymentVoucherDetails(voucherId: string) {
   }
 
   return voucher;
+}
+
+// -------------------------------------------------------------------
+// ADVANCE PAYMENTS — دفعات مقدمة للموردين والمقاولين
+// -------------------------------------------------------------------
+
+export async function recordAdvancePayment(payload: {
+  project_id: string
+  party_id:   string
+  party_type: 'supplier' | 'contractor'   // للتصنيف في الرصيد
+  financial_account_id: string
+  amount: number
+  payment_date: string
+  payment_method: string
+  reference_no?: string
+  notes?: string
+}) {
+  // نجيب الـ user من الـ client العادي (اللي بيحمل JWT)
+  const userClient = createClient()
+  const { data: { user } } = await userClient.auth.getUser()
+
+  // الـ admin client للعمليات على قاعدة البيانات
+  const supabase = createAdminClient()
+
+  // جلب company_id من المشروع
+  const { data: project } = await supabase
+    .from('projects')
+    .select('company_id')
+    .eq('id', payload.project_id)
+    .single()
+
+  if (!project?.company_id) throw new Error('المشروع غير موجود أو لا يملك شركة')
+
+  // 1. إنشاء سند الصرف من نوع advance
+  const { data: voucher, error: vErr } = await supabase
+    .from('payment_vouchers')
+    .insert([{
+      company_id:           project.company_id,
+      project_id:           payload.project_id,
+      voucher_no:           'تلقائي',
+      payment_date:         payload.payment_date,
+      payment_method:       payload.payment_method,
+      financial_account_id: payload.financial_account_id,
+      total_amount:         payload.amount,
+      direction:            'outflow',
+      status:               'draft',
+      payment_type:         'advance',
+      receipt_reference_no: payload.reference_no || null,
+      notes:                payload.notes || null,
+      created_by:           user?.id,
+    }])
+    .select('id')
+    .single()
+
+  if (vErr) throw vErr
+
+  // 2. ربط الطرف (مورد أو مقاول)
+  const { error: pErr } = await supabase
+    .from('payment_voucher_parties')
+    .insert([{
+      payment_voucher_id: voucher.id,
+      party_id:           payload.party_id,
+      paid_amount:        payload.amount,
+    }])
+
+  if (pErr) throw pErr
+
+  // 3. ترحيل السند (سيخصم المبلغ من الخزينة)
+  const { error: postErr } = await supabase.rpc('post_payment_voucher', {
+    p_user_id:    user?.id,
+    p_voucher_id: voucher.id,
+  })
+  if (postErr) throw postErr
+
+  // 4. تحديث رصيد الدفعات المقدمة للطرف
+  const { error: rpcErr } = await supabase.rpc('upsert_party_advance_balance', {
+    p_company_id:  project.company_id,
+    p_project_id:  payload.project_id,
+    p_party_id:    payload.party_id,
+    p_party_type:  payload.party_type,
+    p_add_amount:  payload.amount,
+  })
+
+  if (rpcErr) {
+    console.error('Failed to update advance balance:', rpcErr)
+    throw new Error('فشل تحديث رصيد المدفوعات المقدمة للطرف. يرجى التأكد من تشغيل التحديثات (Migrations).')
+  }
+
+  await writeAuditLog({
+    action:      'advance_payment_created',
+    entity_type: 'payment_voucher',
+    entity_id:   voucher.id,
+    description: `دفعة مقدمة بمبلغ ${payload.amount} لـ ${payload.party_type === 'supplier' ? 'مورد' : 'مقاول'}`,
+    metadata:    { voucher_id: voucher.id, party_id: payload.party_id, amount: payload.amount },
+  })
+
+  revalidatePath(`/projects/${payload.project_id}/payments`)
+  revalidatePath('/company/treasury')
+  revalidatePath('/company/purchases')
+  revalidatePath('/company/purchases/suppliers')
+  return voucher.id
+}
+
+// رصيد الدفعات المقدمة لطرف معين في مشروع
+export async function getPartyAdvanceBalance(
+  projectId: string,
+  partyId:   string,
+  partyType: 'supplier' | 'contractor'
+) {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('party_advance_balances')
+    .select('total_advanced, total_deducted, balance_remaining')
+    .eq('project_id', projectId)
+    .eq('party_id',   partyId)
+    .eq('party_type', partyType)
+    .maybeSingle()
+
+  return data ?? { total_advanced: 0, total_deducted: 0, balance_remaining: 0 }
+}
+
+// قائمة الموردين والمقاولين المرتبطين بمشروع
+export async function getProjectPartiesForAdvance(projectId: string) {
+  const supabase = createAdminClient()
+
+  // الموردين: كل الأطراف التي لها دور "supplier" في الشركة (بغض النظر عن المشروع)
+  const { data: project } = await supabase
+    .from('projects')
+    .select('company_id')
+    .eq('id', projectId)
+    .single()
+
+  const { data: supplierRoles } = await supabase
+    .from('party_roles')
+    .select('party_id, party:party_id(id, arabic_name, company_id)')
+    .eq('role_type', 'supplier')
+    .eq('is_active', true)
+
+  // فلترة الموردين على نفس الشركة
+  const uniqueSuppliers = (supplierRoles || [])
+    .filter((r: any) => r.party?.company_id === project?.company_id && r.party?.arabic_name)
+    .map((r: any) => ({
+      id:           r.party_id,
+      arabic_name:  r.party.arabic_name,
+      type:         'supplier' as const,
+    }))
+
+  // المقاولين: من subcontract_agreements في هذا المشروع فقط
+  const { data: agreements } = await supabase
+    .from('subcontract_agreements')
+    .select('subcontractor_party_id, party:subcontractor_party_id(id, arabic_name)')
+    .eq('project_id', projectId)
+    .not('subcontractor_party_id', 'is', null)
+
+  const uniqueContractors = Array.from(
+    new Map(
+      (agreements || [])
+        .filter((a: any) => a.party?.arabic_name)
+        .map((a: any) => [
+          a.subcontractor_party_id,
+          { id: a.subcontractor_party_id, arabic_name: a.party.arabic_name, type: 'contractor' as const }
+        ])
+    ).values()
+  )
+
+  return { suppliers: uniqueSuppliers, contractors: uniqueContractors }
+}
+
+// -------------------------------------------------------------------
+// جلب قائمة المشاريع النشطة للاستخدام في الشاشات المجمعة
+// -------------------------------------------------------------------
+export async function getCompanyProjects() {
+  const supabase = createAdminClient()
+  
+  // First get the company ID
+  const { data: company, error: cErr } = await supabase
+    .from('companies')
+    .select('id')
+    .limit(1)
+    .single()
+
+  if (cErr || !company) return []
+
+  // Get active projects
+  const { data: projects, error: pErr } = await supabase
+    .from('projects')
+    .select('id, arabic_name, project_code')
+    .eq('company_id', company.id)
+    .in('status', ['active', 'planning', 'on_hold'])
+    .order('arabic_name')
+
+  if (pErr) {
+    console.error('Error fetching company projects:', pErr.message)
+    return []
+  }
+
+  return projects || []
+}
+
+// -------------------------------------------------------------------
+// سداد/تسوية فاتورة أو مستخلص من رصيد دفعات مقدمة
+// -------------------------------------------------------------------
+export async function settleInvoiceFromAdvance(
+  invoiceId: string,
+  invoiceType: 'company_purchase_invoice' | 'supplier_invoice' | 'subcontractor_certificate',
+  partyId: string,
+  partyType: 'supplier' | 'contractor',
+  payload: {
+    advance_project_id: string | null
+    invoice_project_id: string | null
+    amount: number
+    payment_date: string
+    reference_no?: string
+  }
+) {
+  const userClient = createClient()
+  const { data: { user } } = await userClient.auth.getUser()
+  const adminSupabase = createAdminClient()
+
+  if (!user) throw new Error('غير مصرح')
+  if (payload.amount <= 0) throw new Error('مبلغ الاستقطاع غير صالح')
+
+  // 1. Get company ID
+  const { data: comp } = await adminSupabase.from('companies').select('id').single()
+  if (!comp) throw new Error('لا توجد شركة معرفة')
+
+  // 2. Call deduct_party_advance_balance RPC
+  const { error: deductErr } = await adminSupabase.rpc('deduct_party_advance_balance', {
+    p_company_id: comp.id,
+    p_project_id: payload.advance_project_id,
+    p_party_id: partyId,
+    p_party_type: partyType,
+    p_deduct_amount: payload.amount
+  })
+  
+  if (deductErr) throw new Error('لا يمكن استقطاع الدفعة المقدمة: ' + deductErr.message)
+
+  // 3. Create generic payment_voucher header with payment_type = 'advance_settlement'
+  let voucherNo = `SETT-${Date.now().toString().slice(-6)}`
+  const { data: vNext } = await adminSupabase.rpc('get_next_document_no', { 
+    p_company_id: comp.id, p_doc_type: 'payment_vouchers', p_prefix: 'SETT' 
+  })
+  if (vNext) voucherNo = vNext
+
+  const { data: voucher, error: vErr } = await adminSupabase
+    .from('payment_vouchers')
+    .insert({
+      company_id: comp.id,
+      project_id: payload.invoice_project_id, // Project the invoice belongs to
+      financial_account_id: null,
+      payment_type: 'advance_settlement',
+      voucher_no: voucherNo,
+      payment_date: payload.payment_date,
+      direction: 'outflow',
+      total_amount: payload.amount,
+      payment_method: 'cash', // 'offset' is not in standard payment_method check yet
+      receipt_reference_no: payload.reference_no,
+      notes: `تسوية من دفعة مقدمة (مشروع ${payload.advance_project_id || 'الشركة'})`,
+      created_by: user.id
+    })
+    .select('id')
+    .single()
+
+  if (vErr || !voucher) throw new Error('خطأ في إنشاء سند التسوية: ' + vErr?.message)
+
+  // 4. Create payment_voucher_parties
+  const { data: vParty, error: pErr } = await adminSupabase
+    .from('payment_voucher_parties')
+    .insert({
+      payment_voucher_id: voucher.id,
+      party_id: partyId,
+      paid_amount: payload.amount,
+      notes: ''
+    })
+    .select('id')
+    .single()
+
+  if (pErr || !vParty) throw new Error('خطأ في ربط المستفيد: ' + pErr?.message)
+
+  // 5. Create payment_allocations to target the invoice
+  const { error: allocErr } = await adminSupabase
+    .from('payment_allocations')
+    .insert({
+      payment_voucher_party_id: vParty.id,
+      source_entity_type: invoiceType,
+      source_entity_id: invoiceId,
+      allocated_amount: payload.amount
+    })
+
+  if (allocErr) throw new Error('خطأ في تخصيص مبلغ التسوية: ' + allocErr.message)
+
+  // 6. Post payment voucher (which triggers invoice balance update)
+  const { error: postErr } = await adminSupabase.rpc('post_payment_voucher', {
+    p_voucher_id: voucher.id,
+    p_user_id: user.id
+  })
+
+  if (postErr) throw new Error('خطأ في ترحيل سند التسوية: ' + postErr.message)
+
+  await writeAuditLog({
+    action: 'create_advance_settlement',
+    entity_type: 'payment_vouchers',
+    entity_id: voucher.id,
+    description: `تم تسوية دفعة بقيمة ${payload.amount}`
+  })
+  
+  revalidatePath(`/company/purchases/suppliers/${partyId}`)
+  if (invoiceType === 'subcontractor_certificate') {
+    revalidatePath(`/projects/${payload.invoice_project_id}/subcontractors/certificates/${invoiceId}`)
+  } else if (invoiceType === 'supplier_invoice') {
+    revalidatePath(`/projects/${payload.invoice_project_id}/procurement/invoices/${invoiceId}`)
+  } else {
+    revalidatePath(`/company/purchases/invoices/${invoiceId}`)
+  }
+
+  return { voucherId: voucher.id, voucherNo }
 }

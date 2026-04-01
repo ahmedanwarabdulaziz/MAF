@@ -2,11 +2,14 @@
 
 import { useState, useTransition, useMemo } from 'react'
 import Link from 'next/link'
-import { payCompanyInvoice, bulkPaySupplier } from '../../actions'
+import { payCompanyInvoice, bulkPaySupplier } from '../actions'
 import { paySubcontractorCertificate, bulkPaySubcontractor } from '@/actions/certificates'
 import { bulkPaySupplierInvoices } from '@/actions/procurement'
-import ViewInvoiceModal from '../../ViewInvoiceModal'
+import { settleInvoiceFromAdvance } from '@/actions/payments'
+import ViewInvoiceModal from '../ViewInvoiceModal'
 import { requestRetentionRelease, approveRetentionRelease, payRetentionRelease, RetentionMetric } from '@/actions/retention'
+import { fetchVendorStatementData } from '@/actions/vendorStatement'
+import { useEffect, useCallback } from 'react'
 
 const STATUS_LABELS: Record<string, { label: string; badgeClass: string }> = {
   draft:          { label: 'مسودة',          badgeClass: 'bg-gray-100 text-gray-700' },
@@ -24,33 +27,58 @@ const TYPE_LABELS: Record<string, string> = {
   stock_purchase: 'شراء للمخزن',
 }
 
-export default function VendorStatementClient({ 
-  party, 
-  companyInvoices, 
-  projectInvoices, 
-  certificates, 
-  retentionMetrics, 
-  retentionReleases, 
-  accounts 
+export default function VendorStatementModal({ 
+  partyId, 
+  onClose 
 }: { 
-  party: any; 
-  companyInvoices: any[]; 
-  projectInvoices: any[]; 
-  certificates: any[]; 
-  retentionMetrics: RetentionMetric[];
-  retentionReleases: any[];
-  accounts: any[] 
+  partyId: string;
+  onClose: () => void;
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  
+  const [isLoadingData, setIsLoadingData] = useState(true)
+  const [internalData, setInternalData] = useState<{
+    party: any;
+    companyInvoices: any[];
+    projectInvoices: any[];
+    certificates: any[];
+    retentionMetrics: RetentionMetric[];
+    retentionReleases: any[];
+    advanceBalances: any[];
+    accounts: any[];
+  } | null>(null)
+
+  const fetchData = useCallback(async () => {
+    try {
+      const data = await fetchVendorStatementData(partyId)
+      setInternalData(data)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'حدث خطأ أثناء تحميل البيانات')
+    } finally {
+      setIsLoadingData(false)
+    }
+  }, [partyId])
+
+  useEffect(() => {
+    setIsLoadingData(true)
+    fetchData()
+  }, [fetchData])
 
   // Per-invoice Payment Modal State
   const [payInvoiceId, setPayInvoiceId] = useState<string | null>(null)
+  const [paySourceMode, setPaySourceMode] = useState<'treasury' | 'advance'>('treasury')
   const [payAmount, setPayAmount] = useState(0)
   const [payAccountId, setPayAccountId] = useState('')
+  const [payAdvanceProjectId, setPayAdvanceProjectId] = useState('')
   const [payMethod, setPayMethod] = useState('cash')
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0])
   const [payRef, setPayRef] = useState('')
+
+  // Advance Settlement Modal
+  const [settleAdvance, setSettleAdvance] = useState<any>(null)
+  const [settleInvId, setSettleInvId] = useState<string>('')
+  const [settleAmount, setSettleAmount] = useState<number>(0)
 
   // Bulk Payment Modal State
   const [showBulkPay, setShowBulkPay] = useState(false)
@@ -85,6 +113,16 @@ export default function VendorStatementClient({
 
   const fmt = (n: number) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 })
 
+  // Default extracts for hooks safety
+  const companyInvoices = internalData?.companyInvoices || []
+  const projectInvoices = internalData?.projectInvoices || []
+  const certificates = internalData?.certificates || []
+  const advanceBalances = internalData?.advanceBalances || []
+  const retentionMetrics = internalData?.retentionMetrics || []
+  const retentionReleases = internalData?.retentionReleases || []
+  const accounts = internalData?.accounts || []
+  const party = internalData?.party || {}
+
   // Summary Metrics (Combo)
   const computeMetrics = (list: any[]) => list.reduce((acc, inv) => {
     if (['posted', 'partially_paid', 'paid', 'approved', 'paid_in_full'].includes(inv.status)) {
@@ -108,6 +146,9 @@ export default function VendorStatementClient({
     total_returned: compMetrics.total_returned + projMetrics.total_returned + certMetrics.total_returned,
     total_outstanding: compMetrics.total_outstanding + projMetrics.total_outstanding + certMetrics.total_outstanding,
   }
+
+  // Advance Payment summary 
+  const totalAdvances = advanceBalances.reduce((sum, adv) => sum + Number(adv.balance_remaining || 0), 0)
 
   // Group Project Invoices by Project
   const projectsGroup = useMemo(() => {
@@ -231,13 +272,27 @@ export default function VendorStatementClient({
     setError(null)
     startTransition(async () => {
       try {
-        await payCompanyInvoice(payInvoiceId, {
-          financial_account_id: payAccountId,
-          payment_method: payMethod,
-          payment_date: payDate,
-          amount: payAmount,
-          receipt_reference_no: payRef,
-        })
+        if (paySourceMode === 'advance') {
+          if (!payAdvanceProjectId && advanceBalances.some(a => a.project_id)) {
+            // Might need project ID verification, but we'll let TS logic handle the required fields
+          }
+          await settleInvoiceFromAdvance(payInvoiceId, 'company_purchase_invoice', party.id, 'supplier', {
+            advance_project_id: payAdvanceProjectId || null,
+            invoice_project_id: null,
+            amount: payAmount,
+            payment_date: payDate,
+            reference_no: payRef,
+          })
+        } else {
+          await payCompanyInvoice(payInvoiceId, {
+            financial_account_id: payAccountId,
+            payment_method: payMethod,
+            payment_date: payDate,
+            amount: payAmount,
+            receipt_reference_no: payRef,
+          })
+        }
+        await fetchData()
         setPayInvoiceId(null)
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'خطأ في السداد')
@@ -275,6 +330,7 @@ export default function VendorStatementClient({
             receipt_reference_no: bulkRef,
           })
         }
+        await fetchData()
         setBulkSuccess(result)
       } catch (e: unknown) {
         setBulkError(e instanceof Error ? e.message : 'خطأ في السداد')
@@ -293,14 +349,103 @@ export default function VendorStatementClient({
     setError(null)
     startTransition(async () => {
       try {
-        await paySubcontractorCertificate(payCertId, {
-          financial_account_id: payAccountId,
-          payment_method: payMethod,
-          payment_date: payDate,
-          amount: payAmount,
-          receipt_reference_no: payRef,
-        })
+        if (paySourceMode === 'advance') {
+          const cert = certificates.find(c => c.id === payCertId)
+          await settleInvoiceFromAdvance(payCertId, 'subcontractor_certificate', party.id, 'contractor', {
+            advance_project_id: payAdvanceProjectId || null,
+            invoice_project_id: cert?.project_id || null,
+            amount: payAmount,
+            payment_date: payDate,
+            reference_no: payRef,
+          })
+        } else {
+          await paySubcontractorCertificate(payCertId, {
+            financial_account_id: payAccountId,
+            payment_method: payMethod,
+            payment_date: payDate,
+            amount: payAmount,
+            receipt_reference_no: payRef,
+          })
+        }
+        await fetchData()
         setPayCertId(null)
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'خطأ في السداد')
+      }
+    })
+  }
+
+  const payableInvoices = useMemo(() => {
+    const list: { id: string, type: 'company_purchase_invoice'|'supplier_invoice'|'subcontractor_certificate', title: string, outstanding: number, projectId: string | null }[] = []
+    
+    companyInvoices.forEach(i => {
+      if (i.status !== 'paid' && Number(i.outstanding_amount) > 0) {
+        list.push({
+          id: i.id,
+          type: 'company_purchase_invoice',
+          title: `فاتورة ${i.invoice_no} (شركة رئيسية)`,
+          outstanding: Number(i.outstanding_amount),
+          projectId: null
+        })
+      }
+    })
+
+    projectInvoices.forEach(i => {
+      if (i.status !== 'paid' && Number(i.outstanding_amount) > 0) {
+        list.push({
+          id: i.id,
+          type: 'supplier_invoice',
+          title: `فاتورة ${i.invoice_no} (${i.project?.arabic_name || 'مشروع غير محدد'})`,
+          outstanding: Number(i.outstanding_amount),
+          projectId: i.project_id
+        })
+      }
+    })
+
+    ;(certificates || []).forEach(c => {
+      if (c.status !== 'paid' && Number(c.outstanding_amount) > 0) {
+        list.push({
+          id: c.id,
+          type: 'subcontractor_certificate',
+          title: `مستخلص ${c.certificate_no} (${c.project?.arabic_name || 'مشروع غير محدد'})`,
+          outstanding: Number(c.outstanding_amount),
+          projectId: c.project_id
+        })
+      }
+    })
+    return list
+  }, [companyInvoices, projectInvoices, certificates])
+
+  const handleDirectSettle = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!settleAdvance || !settleInvId) return setError('يرجى اختيار الفاتورة/المستخلص')
+    
+    const inv = payableInvoices.find(i => i.id === settleInvId)
+    if (!inv) return setError('لم يتم العثور على الفاتورة')
+
+    const maxAmt = Math.min(inv.outstanding, settleAdvance.balance_remaining)
+    if (settleAmount <= 0 || settleAmount > maxAmt) return setError('المبلغ المدخل غير صالح (تجاوز الحد الأقصى)')
+
+    setError(null)
+    startTransition(async () => {
+      try {
+        await settleInvoiceFromAdvance(
+          settleInvId,
+          inv.type,
+          party.id,
+          settleAdvance.party_type,
+          {
+            advance_project_id: settleAdvance.project_id || null,
+            invoice_project_id: inv.projectId,
+            amount: settleAmount,
+            payment_date: payDate,
+            reference_no: payRef
+          }
+        )
+        await fetchData()
+        setSettleAdvance(null)
+        setSettleInvId('')
+        setSettleAmount(0)
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'خطأ في السداد')
       }
@@ -327,6 +472,7 @@ export default function VendorStatementClient({
           amount: bulkAmount,
           receipt_reference_no: bulkRef,
         })
+        await fetchData()
         setBulkSubSuccess(result)
       } catch (e: unknown) {
         setBulkError(e instanceof Error ? e.message : 'خطأ في السداد')
@@ -347,6 +493,7 @@ export default function VendorStatementClient({
           release_date: reqRetDate,
           notes: reqRetNotes
         })
+        await fetchData()
         setShowReqRetention(false)
         setReqRetProject('')
         setReqRetAmount(0)
@@ -362,6 +509,7 @@ export default function VendorStatementClient({
     startTransition(async () => {
       try {
         await approveRetentionRelease(approveRetId, party.id)
+        await fetchData()
         setApproveRetId(null)
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'خطأ في الاعتماد')
@@ -384,6 +532,7 @@ export default function VendorStatementClient({
           payment_date: payDate,
           reference_no: payRef,
         })
+        await fetchData()
         setPayRetId(null)
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'خطأ في السداد')
@@ -394,21 +543,54 @@ export default function VendorStatementClient({
   const selectedInvoiceAmount = payInvoiceId ? companyInvoices.find(i => i.id === payInvoiceId)?.outstanding_amount : 0
   const selectedCertAmount = payCertId ? certificates.find(c => c.id === payCertId)?.outstanding_amount : 0
 
-  return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6" dir="rtl">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Link href="/company/purchases/suppliers" className="text-sm font-medium text-blue-600 hover:text-blue-800 transition-colors">
-              العودة لقائمة الموردين
-            </Link>
-          </div>
-          <h1 className="text-3xl font-bold text-navy border-b-2 border-primary pb-2 inline-block">
-            {party.arabic_name}
-          </h1>
-          <p className="text-gray-500 mt-2 text-sm">{party.email ? `${party.email} | ` : ''}الهاتف: {party.phone || 'غير مسجل'}</p>
+  if (isLoadingData) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 flex flex-col items-center max-w-sm w-full animate-in zoom-in-95 duration-200">
+          <div className="w-12 h-12 border-4 border-gray-200 border-t-primary rounded-full animate-spin mb-4"></div>
+          <p className="text-gray-600 font-bold">جاري تحميل كشف الحساب...</p>
         </div>
+      </div>
+    )
+  }
+
+  if (!internalData || error) {
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full animate-in zoom-in-95 duration-200 text-center">
+          <p className="text-danger font-bold mb-4">{error || 'فشل في تحميل البيانات.'}</p>
+          <button onClick={onClose} className="px-6 py-2 bg-gray-100 rounded-lg text-gray-700 hover:bg-gray-200 transition">إغلاق</button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
+      <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      <div className="relative w-full max-w-7xl bg-background rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden max-h-[96vh] animate-in zoom-in-95 duration-200">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 bg-navy">
+          <div>
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <span className="text-2xl">📑</span> كشف حساب تفصيلي: {party.arabic_name}
+            </h2>
+            <p className="text-white/60 text-xs mt-0.5">
+              {party.phone ? `الهاتف: ${party.phone}` : 'الهاتف غير مسجل'} {party.email ? ` | ${party.email}` : ''}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 text-white/80 transition-colors">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-grow"></div>
         <div className="flex gap-2 shrink-0 pt-2 flex-wrap justify-end max-w-sm">
           {(totalOutstandingCompany > 0 || hasAnyProjectOutstanding) && (
             <div className="text-center">
@@ -471,7 +653,7 @@ export default function VendorStatementClient({
       )}
 
       {/* Summary Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
         <div className="bg-white p-5 rounded-xl border shadow-sm">
           <p className="text-sm font-semibold text-text-secondary mb-1">إجمالي الفواتير والمستخلصات</p>
           <p className="text-2xl font-black text-navy dir-ltr text-right">{fmt(summary.total_net)} ج.م</p>
@@ -488,9 +670,13 @@ export default function VendorStatementClient({
           <p className="text-sm font-semibold text-text-secondary mb-1">المستحق الحالي (عامل)</p>
           <p className="text-2xl font-black text-danger dir-ltr text-right">{fmt(summary.total_outstanding)} ج.م</p>
         </div>
-        <div className="bg-white p-5 rounded-xl border shadow-sm border-l-4 border-l-orange-500">
+        <div className="bg-white p-5 rounded-xl border shadow-sm border-l-4 border-l-orange-500 flex flex-col justify-between cursor-help" title="رصيد ضمان الأعمال المتبقي">
           <p className="text-sm font-semibold text-text-secondary mb-1">تعلية متاحة للاسترداد</p>
           <p className="text-2xl font-black text-orange-600 dir-ltr text-right">{fmt(retentionMetrics.reduce((s, m) => s + m.available_balance, 0))} ج.م</p>
+        </div>
+        <div className="bg-white p-5 rounded-xl border shadow-sm border-l-4 border-l-cyan-500 flex flex-col justify-between cursor-help" title="رصيد دفعات مقدمة (جاري خصمها من المستخلصات والفواتير)">
+          <p className="text-sm font-semibold text-text-secondary mb-1">دفعات مقدمة معلقة</p>
+          <p className="text-2xl font-black text-cyan-700 dir-ltr text-right">{fmt(totalAdvances)} ج.م</p>
         </div>
         <div className="bg-white p-5 rounded-xl border shadow-sm">
           <p className="text-sm font-semibold text-text-secondary mb-1">عدد الحركات (الكلي)</p>
@@ -559,8 +745,10 @@ export default function VendorStatementClient({
                       <button
                         onClick={() => {
                           setPayInvoiceId(inv.id)
+                          setPaySourceMode('treasury')
                           setPayAmount(inv.outstanding_amount)
                           setPayAccountId('')
+                          setPayAdvanceProjectId('')
                           setPayRef('')
                           setError(null)
                         }}
@@ -695,8 +883,10 @@ export default function VendorStatementClient({
                         <button
                           onClick={() => {
                             setPayCertId(cert.id)
+                            setPaySourceMode('treasury')
                             setPayAmount(cert.outstanding_amount)
                             setPayAccountId('')
+                            setPayAdvanceProjectId('')
                             setPayRef('')
                             setError(null)
                           }}
@@ -797,6 +987,68 @@ export default function VendorStatementClient({
         </div>
       )}
 
+      {/* Advance Payments List */}
+      {advanceBalances && advanceBalances.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden mt-6">
+          <div className="px-5 py-4 border-b bg-cyan-50/50 flex items-center justify-between">
+            <h2 className="font-bold text-cyan-900 text-lg flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-cyan-500 mx-1"></span>
+              أرصدة الدفعات المقدمة (المتبقية)
+            </h2>
+            <span className="bg-white border text-cyan-800 text-xs py-1 px-3 rounded-full font-bold">
+              {advanceBalances.length} رصيد
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-gray-50/80 text-gray-700 text-xs uppercase tracking-wider">
+                <tr>
+                  <th className="px-4 py-3 font-semibold">المشروع / النطاق</th>
+                  <th className="px-4 py-3 font-semibold text-right border-l">الدفعة الأصلية</th>
+                  <th className="px-4 py-3 font-semibold text-right border-l text-purple-600">ما تم استقطاعه</th>
+                  <th className="px-4 py-3 font-semibold text-right font-bold text-cyan-700">الرصيد المتبقي (المدين)</th>
+                  <th className="px-4 py-3 font-semibold text-center">تاريخ آخر حركة</th>
+                  <th className="px-4 py-3 font-semibold text-center">الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {advanceBalances.map(adv => (
+                  <tr key={adv.id} className="hover:bg-cyan-50/30 transition-colors">
+                    <td className="px-4 py-3 font-medium text-gray-900">
+                      {adv.project?.arabic_name || 'الشركة الرئيسية'}
+                    </td>
+                    <td className="px-4 py-3 dir-ltr text-right border-l text-gray-500">
+                      {fmt(adv.total_advanced)}
+                    </td>
+                    <td className="px-4 py-3 dir-ltr text-right border-l text-purple-600">
+                      {fmt(adv.total_deducted)}
+                    </td>
+                    <td className="px-4 py-3 dir-ltr text-right font-bold text-cyan-700 bg-cyan-50/20">
+                      {fmt(adv.balance_remaining)} ج.م
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 text-center text-xs">
+                      {new Date(adv.updated_at).toLocaleDateString('en-GB')}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => {
+                          setSettleAdvance(adv)
+                          setSettleInvId('')
+                          setSettleAmount(0)
+                        }}
+                        className="inline-flex items-center px-3 py-1.5 bg-cyan-100 text-cyan-800 rounded text-xs font-bold hover:bg-cyan-200 transition-colors"
+                      >
+                        تسوية فاتورة من الدفعة
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Payment Modal for Company Invoices */}
       {payInvoiceId !== null && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -816,22 +1068,64 @@ export default function VendorStatementClient({
                 <span className="font-bold text-blue-700 dir-ltr text-right">{fmt(selectedInvoiceAmount || 0)} ج.م</span>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">حساب السداد (الخزينة/البنك) *</label>
-                <select
-                  required
-                  value={payAccountId}
-                  onChange={e => setPayAccountId(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                >
-                  <option value="">-- اختر الحساب الذي سيتم الدفع منه --</option>
-                  {accounts.map(acc => (
-                    <option key={acc.id} value={acc.financial_account_id}>
-                      {acc.arabic_name} {acc.project ? `(مشروع ${acc.project.arabic_name})` : '(حساب رئيسي)'} - متاح: {fmt(acc.current_balance)} {acc.currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {advanceBalances && advanceBalances.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">مصدر السداد *</label>
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setPaySourceMode('treasury')}
+                      className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${paySourceMode === 'treasury' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      من الخزينة / البنك
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaySourceMode('advance')}
+                      className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${paySourceMode === 'advance' ? 'bg-white shadow text-cyan-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      خصم من دفعة مقدمة
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {paySourceMode === 'treasury' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">حساب السداد (الخزينة/البنك) *</label>
+                  <select
+                    required={paySourceMode === 'treasury'}
+                    value={payAccountId}
+                    onChange={e => setPayAccountId(e.target.value)}
+                    className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">-- اختر الحساب الذي سيتم الدفع منه --</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.financial_account_id}>
+                        {acc.arabic_name} {acc.project ? `(مشروع ${acc.project.arabic_name})` : '(حساب رئيسي)'} - متاح: {fmt(acc.current_balance)} {acc.currency}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-cyan-800 mb-1">رصيد الدفعة المقدمة المختار *</label>
+                  <select
+                    required={paySourceMode === 'advance'}
+                    value={payAdvanceProjectId}
+                    onChange={e => setPayAdvanceProjectId(e.target.value)}
+                    className="w-full rounded-lg border-cyan-300 bg-cyan-50/30 py-2.5 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm text-cyan-900"
+                  >
+                    <option value="">-- اختر رصيد الدفعة المقدمة لخصم الفاتورة --</option>
+                    {advanceBalances.map(adv => (
+                      <option key={adv.id} value={adv.project_id || ''}>
+                        {adv.project?.arabic_name || 'الشركة الرئيسية'} - متاح: {fmt(adv.balance_remaining)} ج.م
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">المبلغ المراد سداده *</label>
@@ -927,22 +1221,63 @@ export default function VendorStatementClient({
                 <span className="font-bold text-indigo-700 dir-ltr text-right">{fmt(selectedCertAmount || 0)} ج.م</span>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">حساب السداد (الخزينة/البنك) *</label>
-                <select
-                  required
-                  value={payAccountId}
-                  onChange={e => setPayAccountId(e.target.value)}
-                  className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
-                >
-                  <option value="">-- اختر الحساب الذي سيتم الدفع منه --</option>
-                  {accounts.map(acc => (
-                    <option key={acc.id} value={acc.financial_account_id}>
-                      {acc.arabic_name} {acc.project ? `(مشروع ${acc.project.arabic_name})` : '(حساب رئيسي)'} - متاح: {fmt(acc.current_balance)} {acc.currency}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {advanceBalances && advanceBalances.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">مصدر السداد *</label>
+                  <div className="flex bg-gray-100 rounded-lg p-1">
+                    <button
+                      type="button"
+                      onClick={() => setPaySourceMode('treasury')}
+                      className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${paySourceMode === 'treasury' ? 'bg-white shadow text-primary' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      من الخزينة / البنك
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaySourceMode('advance')}
+                      className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${paySourceMode === 'advance' ? 'bg-white shadow text-cyan-600' : 'text-gray-500 hover:text-gray-700'}`}
+                    >
+                      خصم من دفعة مقدمة
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {paySourceMode === 'treasury' ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">حساب السداد (الخزينة/البنك) *</label>
+                  <select
+                    required={paySourceMode === 'treasury'}
+                    value={payAccountId}
+                    onChange={e => setPayAccountId(e.target.value)}
+                    className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  >
+                    <option value="">-- اختر الحساب الذي سيتم الدفع منه --</option>
+                    {accounts.map(acc => (
+                      <option key={acc.id} value={acc.financial_account_id}>
+                        {acc.arabic_name} {acc.project ? `(مشروع ${acc.project.arabic_name})` : '(حساب رئيسي)'} - متاح: {fmt(acc.current_balance)} {acc.currency}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-cyan-800 mb-1">رصيد الدفعة المقدمة المختار *</label>
+                  <select
+                    required={paySourceMode === 'advance'}
+                    value={payAdvanceProjectId}
+                    onChange={e => setPayAdvanceProjectId(e.target.value)}
+                    className="w-full rounded-lg border-cyan-300 bg-cyan-50/30 py-2.5 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm text-cyan-900"
+                  >
+                    <option value="">-- اختر رصيد الدفعة المقدمة لخصم الفاتورة --</option>
+                    {advanceBalances.map(adv => (
+                      <option key={adv.id} value={adv.project_id || ''}>
+                        {adv.project?.arabic_name || 'الشركة الرئيسية'} - متاح: {fmt(adv.balance_remaining)} ج.م
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">المبلغ المراد سداده *</label>
@@ -1766,6 +2101,111 @@ export default function VendorStatementClient({
           </div>
         </div>
       )}
+      {/* Modal for Settle from Advance */}
+      {settleAdvance !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b bg-cyan-50 flex items-center justify-between">
+              <h3 className="font-bold text-cyan-900">سداد المستحقات من الدفعة المقدمة</h3>
+              <button 
+                onClick={() => setSettleAdvance(null)} 
+                disabled={isPending}
+                className="text-gray-400 hover:text-gray-600 transition"
+              >✕</button>
+            </div>
+            <form onSubmit={handleDirectSettle} className="p-6 space-y-5">
+              
+              <div className="bg-cyan-50/50 p-3 rounded-lg border border-cyan-100 flex justify-between items-center text-sm">
+                <span className="text-gray-600">رصيد الدفعة المتاح:</span>
+                <span className="font-bold text-cyan-700 dir-ltr text-right">{fmt(settleAdvance.balance_remaining)} ج.م</span>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">اختر الفاتورة / المستخلص المراد سداده *</label>
+                <select
+                  required
+                  value={settleInvId}
+                  onChange={e => {
+                    setSettleInvId(e.target.value)
+                    const maxA = Math.min(payableInvoices.find(i => i.id === e.target.value)?.outstanding || 0, settleAdvance.balance_remaining)
+                    setSettleAmount(maxA)
+                  }}
+                  className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm"
+                >
+                  <option value="">-- يرجى اختيار الفاتورة / المستخلص --</option>
+                  {payableInvoices.map(inv => (
+                    <option key={inv.id} value={inv.id}>
+                      {inv.title} - المستحق الفعلي: {fmt(inv.outstanding)} ج.م
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {settleInvId && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">المبلغ المراد سداده *</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max={Math.min(payableInvoices.find(i => i.id === settleInvId)?.outstanding || 0, settleAdvance.balance_remaining)}
+                        required
+                        dir="ltr"
+                        value={settleAmount}
+                        onChange={e => setSettleAmount(Number(e.target.value))}
+                        className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 font-medium text-right"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">تاريخ السداد *</label>
+                      <input
+                        type="date"
+                        required
+                        dir="ltr"
+                        value={payDate}
+                        onChange={e => setPayDate(e.target.value)}
+                        className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm text-right"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات للمحاسب (اختياري)</label>
+                    <input
+                      type="text"
+                      value={payRef}
+                      onChange={e => setPayRef(e.target.value)}
+                      placeholder="مثال: تسوية عن شهر ديسمبر"
+                      className="w-full rounded-lg border-gray-300 py-2.5 shadow-sm focus:border-cyan-500 focus:ring-cyan-500 text-sm text-right"
+                    />
+                  </div>
+                </>
+              )}
+
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="submit"
+                  disabled={isPending || !settleInvId || settleAmount <= 0}
+                  className="flex-1 bg-cyan-600 text-white rounded-lg py-2.5 font-bold hover:bg-cyan-700 transition shadow-sm disabled:opacity-50"
+                >
+                  {isPending ? 'جاري السداد وتحديث الأرصدة...' : 'تأكيد التسوية'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettleAdvance(null)}
+                  disabled={isPending}
+                  className="px-5 py-2.5 border border-border rounded-lg text-text-primary hover:bg-background-secondary font-bold transition"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      </div>
     </div>
-  )
+  </div>
+)
 }

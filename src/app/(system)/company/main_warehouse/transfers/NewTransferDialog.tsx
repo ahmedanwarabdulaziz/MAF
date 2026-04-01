@@ -30,14 +30,24 @@ export default function NewTransferDialog({ warehouses, items, itemGroups, compa
   const [selectedItem, setSelectedItem] = useState('')
   const [quantity, setQuantity] = useState('')
   const [availableQty, setAvailableQty] = useState<number | null>(null)
+  
+  const [lines, setLines] = useState<{ item_id: string; quantity: string; notes: string }[]>([{ item_id: '', quantity: '', notes: '' }])
+  const [stockCache, setStockCache] = useState<Record<string, number>>({})
 
   useEffect(() => {
-    if (sourceWarehouseId && selectedItem) {
-      getAvailableStock(sourceWarehouseId, selectedItem).then(setAvailableQty)
-    } else {
-      setAvailableQty(null)
-    }
-  }, [sourceWarehouseId, selectedItem])
+    setStockCache({})
+  }, [sourceWarehouseId])
+
+  useEffect(() => {
+    if (!sourceWarehouseId) return
+    lines.forEach(line => {
+      if (line.item_id && stockCache[line.item_id] === undefined) {
+        getAvailableStock(sourceWarehouseId, line.item_id).then((qty: number) => {
+          setStockCache(prev => ({ ...prev, [line.item_id]: qty }))
+        })
+      }
+    })
+  }, [sourceWarehouseId, lines, stockCache])
 
   useEffect(() => {
     if (isOpen) {
@@ -45,11 +55,10 @@ export default function NewTransferDialog({ warehouses, items, itemGroups, compa
         .then(setDocNo)
         .catch(() => {})
         
-      // Reset form
       setSourceWarehouseId('')
       setDestWarehouseId('')
-      setSelectedItem('')
-      setQuantity('')
+      setLines([{ item_id: '', quantity: '', notes: '' }])
+      setStockCache({})
       setNotes('')
       setError('')
     }
@@ -93,11 +102,15 @@ export default function NewTransferDialog({ warehouses, items, itemGroups, compa
     if (sourceWarehouseId === destWarehouseId) {
       return setError('لا يمكن التحويل لنفس المخزن')
     }
-    if (!selectedItem || !quantity || Number(quantity) <= 0) {
-      return setError('رجاء إدخال صنف وكمية صحيحة')
+    if (lines.length === 0 || lines.some(l => !l.item_id || !l.quantity || Number(l.quantity) <= 0)) {
+      return setError('رجاء إدخال الصنف والكمية الصحيحة لجميع البنود')
     }
-    if (availableQty !== null && Number(quantity) > availableQty) {
-      return setError(`الكمية المطلوبة أكبر من الرصيد المتاح (${availableQty}) بالمخزن المختار!`)
+    for (const line of lines) {
+      const avail = stockCache[line.item_id]
+      if (avail !== undefined && Number(line.quantity) > avail) {
+        const itemName = items.find(i => i.id === line.item_id)?.arabic_name || ''
+        return setError(`الكمية المطلوبة للصنف "${itemName}" أكبر من الرصيد المتاح (${avail}) بالمخزن المختار!`)
+      }
     }
 
     setLoading(true)
@@ -116,12 +129,16 @@ export default function NewTransferDialog({ warehouses, items, itemGroups, compa
           status: 'draft'
         }
 
-        const lineData = [{
-          item_id: selectedItem,
-          unit_id: itemInfo?.primary_unit_id,
-          quantity: Number(quantity),
-          unit_cost: 0
-        }]
+        const lineData = lines.map(l => {
+          const itemInfo = items.find(i => i.id === l.item_id)
+          return {
+            item_id: l.item_id,
+            unit_id: itemInfo?.primary_unit_id,
+            quantity: Number(l.quantity),
+            unit_cost: 0,
+            notes: l.notes || null
+          }
+        })
 
         await createWarehouseTransfer({ header: headerData, lines: lineData })
 
@@ -224,7 +241,7 @@ export default function NewTransferDialog({ warehouses, items, itemGroups, compa
                         className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                       >
                         <option value="">اختر المخزن...</option>
-                        {warehouses.map(w => <option key={w.id} value={w.id}>{w.arabic_name}</option>)}
+                        {warehouses.filter(w => w.id !== sourceWarehouseId).map(w => <option key={w.id} value={w.id}>{w.arabic_name}</option>)}
                       </select>
                     </div>
 
@@ -242,48 +259,96 @@ export default function NewTransferDialog({ warehouses, items, itemGroups, compa
 
                 {/* Items Section */}
                 <div className="bg-white rounded-xl border p-5 space-y-4 shadow-sm">
-                  <h2 className="font-semibold text-gray-800">الأصناف المحولة</h2>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 bg-gray-50 border border-gray-200 p-4 rounded-xl items-start">
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">الصنف <span className="text-red-500">*</span></label>
-                      <CustomSelect
-                        value={selectedItem}
-                        onChange={setSelectedItem}
-                        options={itemOptions}
-                        placeholder="-- ابحث عن صنف --"
-                        searchable={true}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <div className="flex justify-between items-end mb-1">
-                        <label className="block text-xs font-medium text-gray-600">الكمية <span className="text-red-500">*</span></label>
-                        {selectedItem && (
-                          <span className={`text-[10px] font-bold ${availableQty !== null && availableQty > 0 ? 'text-blue-600' : 'text-red-600'}`}>
-                            المتاح: {availableQty ?? 0}
-                          </span>
-                        )}
-                      </div>
-                      <input
-                        type="number"
-                        min="0.0001"
-                        step="any"
-                        value={quantity}
-                        onChange={(e) => setQuantity(e.target.value)}
-                        required
-                        placeholder="0"
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                        dir="ltr"
-                      />
-                      {selectedItem && (
-                        <div className="text-[10px] text-gray-500 font-medium mt-1">
-                          الوحدة: {Array.isArray(items.find((i:any) => i.id === selectedItem)?.unit) 
-                            ? (items.find((i:any) => i.id === selectedItem)?.unit as any)[0]?.arabic_name
-                            : (items.find((i:any) => i.id === selectedItem)?.unit as any)?.arabic_name}
-                        </div>
-                      )}
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <h2 className="font-semibold text-gray-800">الأصناف المحولة</h2>
+                    <button
+                      type="button"
+                      onClick={() => setLines([...lines, { item_id: '', quantity: '', notes: '' }])}
+                      className="text-sm font-medium text-blue-600 hover:text-blue-800 font-bold"
+                    >
+                      + إضافة صنف آخر
+                    </button>
                   </div>
+                  
+                  {lines.map((line, idx) => {
+                    const availableQty = stockCache[line.item_id] ?? null;
+                    return (
+                      <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-4 bg-gray-50 border border-gray-200 p-4 rounded-xl items-start relative text-right">
+                        {lines.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => setLines(lines.filter((_, i) => i !== idx))}
+                            className="absolute left-2 top-2 text-red-500 hover:bg-red-50 p-1 rounded"
+                            title="إزالة هذا الصنف"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                        <div className="md:col-span-6">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">الصنف <span className="text-red-500">*</span></label>
+                          <CustomSelect
+                            value={line.item_id}
+                            onChange={(val) => {
+                              const newLines = [...lines];
+                              newLines[idx].item_id = val;
+                              setLines(newLines);
+                            }}
+                            options={itemOptions}
+                            placeholder="-- ابحث عن صنف --"
+                            searchable={true}
+                          />
+                        </div>
+                        <div className="md:col-span-3 pr-0 md:pr-2">
+                          <div className="flex justify-between items-end mb-1">
+                            <label className="block text-xs font-medium text-gray-600">الكمية <span className="text-red-500">*</span></label>
+                            {line.item_id && (
+                              <span className={`text-[10px] font-bold ${availableQty !== null && availableQty > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                                المتاح: {availableQty ?? 0}
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="number"
+                            min="0.0001"
+                            step="any"
+                            value={line.quantity}
+                            onChange={(e) => {
+                              const newLines = [...lines];
+                              newLines[idx].quantity = e.target.value;
+                              setLines(newLines);
+                            }}
+                            required
+                            placeholder="0"
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                            dir="ltr"
+                          />
+                          {line.item_id && (
+                            <div className="text-[10px] text-gray-500 font-medium mt-1 pr-1">
+                              الوحدة: {Array.isArray(items.find((i:any) => i.id === line.item_id)?.unit) 
+                                ? (items.find((i:any) => i.id === line.item_id)?.unit as any)[0]?.arabic_name
+                                : (items.find((i:any) => i.id === line.item_id)?.unit as any)?.arabic_name}
+                            </div>
+                          )}
+                        </div>
+                        <div className="md:col-span-3 pr-0 md:pr-2">
+                          <label className="block text-xs font-medium text-gray-600 mb-1">ملاحظات البند</label>
+                          <input
+                            type="text"
+                            value={line.notes}
+                            onChange={(e) => {
+                              const newLines = [...lines];
+                              newLines[idx].notes = e.target.value;
+                              setLines(newLines);
+                            }}
+                            placeholder="أي تفاصيل..."
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
 
                 {/* Actions */}

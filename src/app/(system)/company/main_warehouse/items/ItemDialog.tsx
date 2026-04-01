@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createItem, createUnit } from '@/actions/warehouse'
+import Link from 'next/link'
+import { createItem, updateItem, createUnit } from '@/actions/warehouse'
 import { createClient } from '@/lib/supabase'
+import Image from 'next/image'
 
 interface ItemGroup {
   id: string
@@ -16,6 +18,8 @@ interface Props {
   companyId: string
   itemGroups: ItemGroup[]
   units: { id: string; arabic_name: string }[]
+  initialData?: any
+  trigger?: React.ReactNode
 }
 
 /* ─── Hierarchical Group Picker ─── */
@@ -350,33 +354,41 @@ function QuickAddUnitModal({
 }
 
 /* ─── Main Dialog Component ─── */
-export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
+export default function ItemDialog({ companyId, itemGroups, units, initialData, trigger }: Props) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [autoCode, setAutoCode] = useState('جاري التوليد...')
+  const [autoCode, setAutoCode] = useState(initialData?.item_code || 'جاري التوليد...')
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.image_url || null)
   
-  const [selectedGroupId, setSelectedGroupId] = useState<string>('')
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(initialData?.item_group_id || '')
   const [groupError, setGroupError] = useState(false)
   
   const [unitList, setUnitList] = useState<{ id: string; arabic_name: string }[]>(units)
   const [unitModal, setUnitModal] = useState<null | 'primary' | 'purchase'>(null)
+  const [isActive, setIsActive] = useState<boolean>(initialData?.is_active ?? true)
+  const [isStocked, setIsStocked] = useState<boolean>(initialData?.is_stocked ?? true)
   
   const initialForm = {
-    arabic_name: '',
-    english_name: '',
-    primary_unit_id: ''
+    arabic_name: initialData?.arabic_name || '',
+    english_name: initialData?.english_name || '',
+    primary_unit_id: initialData?.primary_unit_id || ''
   }
   const [form, setForm] = useState(initialForm)
   
   const openModal = () => setIsOpen(true)
   const closeModal = () => {
     setIsOpen(false)
-    setForm(initialForm)
-    setSelectedGroupId('')
+    if (!initialData) {
+      setForm(initialForm)
+      setSelectedGroupId('')
+      setImagePreview(null)
+    }
     setGroupError(false)
     setError('')
+    setImageFile(null)
   }
   
   function setField(key: string, value: string) {
@@ -389,7 +401,7 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
   }, [units])
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || initialData) return
     let isMounted = true
     async function generate() {
       const supabase = createClient()
@@ -402,7 +414,7 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
     }
     generate()
     return () => { isMounted = false }
-  }, [isOpen])
+  }, [isOpen, initialData])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -416,18 +428,52 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
     setLoading(true)
     
     try {
-      await createItem({
+      let image_url = initialData?.image_url ?? null
+      
+      if (imageFile) {
+        const supabase = createClient()
+        const fileExt = imageFile.name.split('.').pop()
+        const fileName = `${companyId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('items')
+          .upload(fileName, imageFile, {
+            cacheControl: '3600',
+            upsert: false
+          })
+          
+        if (uploadError) {
+          throw new Error('فشل رفع الصورة: ' + uploadError.message)
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('items')
+          .getPublicUrl(fileName)
+          
+        image_url = publicUrl
+      } else if (!imagePreview && image_url) {
+        image_url = null
+      }
+
+      const payload = {
         company_id: companyId,
         item_group_id: selectedGroupId,
         primary_unit_id: form.primary_unit_id,
         item_code: autoCode,
         arabic_name: form.arabic_name.trim(),
         english_name: form.english_name.trim() || null,
-        is_stocked: true,
-        is_active: true,
+        is_stocked: isStocked,
+        is_active: isActive,
         min_stock_level: null,
         notes: null,
-      })
+        image_url: image_url
+      }
+
+      if (initialData?.id) {
+        await updateItem(initialData.id, payload)
+      } else {
+        await createItem(payload)
+      }
 
       setLoading(false)
       closeModal()
@@ -441,12 +487,18 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
 
   return (
     <>
-      <button
-        onClick={openModal}
-        className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
-      >
-        + إضافة صنف جديد
-      </button>
+      {trigger ? (
+        <div onClick={openModal} className="inline-block cursor-pointer leading-none">
+          {trigger}
+        </div>
+      ) : (
+        <button
+          onClick={openModal}
+          className="rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 transition-colors"
+        >
+          + إضافة صنف جديد
+        </button>
+      )}
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -456,8 +508,12 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-navy/10 bg-navy px-6 py-4 shrink-0 shadow-sm relative z-10">
               <div>
-                <h2 className="text-xl font-bold text-white">إضافة صنف جديد</h2>
-                <p className="mt-1 text-sm text-white/80">تسجيل صنف جديد في دليل الأصناف للمخزن الرئيسي</p>
+                <h2 className="text-xl font-bold text-white">
+                  {initialData ? 'تعديل الصنف' : 'إضافة صنف جديد'}
+                </h2>
+                <p className="mt-1 text-sm text-white/80">
+                  {initialData ? 'تحديث بيانات الصنف المخزني أو الخدمي' : 'تسجيل صنف جديد في دليل الأصناف للمخزن الرئيسي'}
+                </p>
               </div>
               <button onClick={closeModal} className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white transition-colors">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -480,56 +536,142 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
                 <div className="rounded-xl border border-border bg-white p-5 space-y-5 shadow-sm">
                   <h3 className="font-semibold text-text-primary border-b border-border pb-2 flex items-center gap-2">
                     <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
-                    البيانات الأساسية
+                    البيانات الأساسية وصورة الصنف
                   </h3>
                   
-                  <div className="grid gap-5 md:grid-cols-2">
-                    <div className="space-y-1.5 focus-within:relative z-[60]">
-                      <label className="text-sm font-medium text-text-primary">
-                        المجموعة <span className="text-danger">*</span>
-                      </label>
-                      <GroupPicker
-                        groups={itemGroups}
-                        value={selectedGroupId}
-                        onChange={id => { setSelectedGroupId(id); setGroupError(false) }}
-                      />
-                      {groupError && (
-                        <p className="text-xs text-danger mt-1">يرجى اختيار مجموعة الصنف لتنظيم المخزون</p>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-1.5 focus-within:z-0">
-                      <label className="text-sm font-medium text-text-primary">كود الصنف</label>
-                      <div className="flex items-center rounded-lg border border-border bg-background-secondary/60 px-4 py-2 min-h-[40px]" dir="ltr">
-                        <span className="text-sm font-bold text-primary tracking-widest">{autoCode}</span>
+                  <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="space-y-4 lg:col-span-2">
+                      <div className="grid gap-5 md:grid-cols-2">
+                        <div className="space-y-1.5 focus-within:relative z-[60]">
+                          <label className="text-sm font-medium text-text-primary">
+                            المجموعة <span className="text-danger">*</span>
+                          </label>
+                          <GroupPicker
+                            groups={itemGroups}
+                            value={selectedGroupId}
+                            onChange={id => { setSelectedGroupId(id); setGroupError(false) }}
+                          />
+                          {groupError && (
+                            <p className="text-xs text-danger mt-1">يرجى اختيار مجموعة الصنف لتنظيم المخزون</p>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-1.5 focus-within:z-0">
+                          <label className="text-sm font-medium text-text-primary">كود الصنف</label>
+                          <div className="flex items-center rounded-lg border border-border bg-background-secondary/60 px-4 py-2 min-h-[40px]" dir="ltr">
+                            <span className="text-sm font-bold text-primary tracking-widest">{autoCode}</span>
+                          </div>
+                        </div>
                       </div>
+
+                      <div className="grid gap-5 md:grid-cols-2 focus-within:z-0">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-text-primary">
+                            الاسم (عربي) <span className="text-danger">*</span>
+                          </label>
+                          <input
+                            required
+                            value={form.arabic_name}
+                            onChange={e => setField('arabic_name', e.target.value)}
+                            placeholder="مثال: أسمنت بورتلاندي"
+                            className="w-full rounded-lg border border-border bg-background-secondary/30 px-4 py-2 text-sm focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium text-text-primary">الاسم (إنجليزي) <span className="text-text-secondary font-normal text-xs">(اختياري)</span></label>
+                          <input
+                            value={form.english_name}
+                            onChange={e => setField('english_name', e.target.value)}
+                            placeholder="Portland Cement"
+                            dir="ltr"
+                            className="w-full rounded-lg border border-border bg-background-secondary/30 px-4 py-2 text-sm focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 h-full">
+                      <label className="text-sm font-medium text-text-primary block">صورة الصنف</label>
+                      <div className="h-[132px] rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center p-2 relative overflow-hidden bg-background-secondary/30 hover:bg-background-secondary/60 transition-colors group">
+                        {imagePreview ? (
+                          <>
+                            <img src={imagePreview} alt="Preview" className="w-full h-full object-contain p-1 absolute inset-0" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <p className="text-white text-xs font-medium">تغيير الصورة</p>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="text-center text-text-secondary flex flex-col items-center">
+                            <svg className="w-8 h-8 mb-2 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                            </svg>
+                            <span className="text-xs">اضغط لرفع صورة</span>
+                          </div>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0]
+                            if (file) {
+                              setImageFile(file)
+                              setImagePreview(URL.createObjectURL(file))
+                            }
+                          }}
+                        />
+                      </div>
+                      {imageFile && (
+                        <button
+                          type="button"
+                          onClick={() => { setImageFile(null); setImagePreview(null) }}
+                          className="text-xs text-danger w-full text-center mt-1 hover:underline font-medium"
+                        >
+                          إزالة الصورة
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid gap-5 md:grid-cols-2 focus-within:z-0">
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-text-primary">
-                        الاسم (عربي) <span className="text-danger">*</span>
-                      </label>
-                      <input
-                        required
-                        value={form.arabic_name}
-                        onChange={e => setField('arabic_name', e.target.value)}
-                        placeholder="مثال: أسمنت بورتلاندي"
-                        className="w-full rounded-lg border border-border bg-background-secondary/30 px-4 py-2 text-sm focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
-                      />
+                  {/* Status Toggles (Edit only) */}
+                  {initialData && (
+                    <div className="pt-4 border-t border-border mt-4">
+                      <h3 className="text-sm font-bold text-text-primary mb-4">الحالة</h3>
+                      <div className="flex flex-wrap gap-6">
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                          <div
+                            onClick={() => setIsActive(v => !v)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              isActive ? 'bg-success' : 'bg-border'
+                            }`}
+                          >
+                            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                              isActive ? 'translate-x-6' : 'translate-x-1'
+                            }`} />
+                          </div>
+                          <span className="text-sm font-medium text-text-primary">
+                            {isActive ? 'صنف نشط' : 'موقوف'}
+                          </span>
+                        </label>
+
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                          <div
+                            onClick={() => setIsStocked(v => !v)}
+                            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                              isStocked ? 'bg-primary' : 'bg-border'
+                            }`}
+                          >
+                            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow transition-transform ${
+                              isStocked ? 'translate-x-6' : 'translate-x-1'
+                            }`} />
+                          </div>
+                          <span className="text-sm font-medium text-text-primary">
+                            {isStocked ? 'صنف مخزني' : 'غير مخزني'}
+                          </span>
+                        </label>
+                      </div>
                     </div>
-                    <div className="space-y-1.5">
-                      <label className="text-sm font-medium text-text-primary">الاسم (إنجليزي) <span className="text-text-secondary font-normal text-xs">(اختياري)</span></label>
-                      <input
-                        value={form.english_name}
-                        onChange={e => setField('english_name', e.target.value)}
-                        placeholder="Portland Cement"
-                        dir="ltr"
-                        className="w-full rounded-lg border border-border bg-background-secondary/30 px-4 py-2 text-sm focus:border-primary focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
-                      />
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Units Section */}
@@ -587,7 +729,7 @@ export default function NewItemDialog({ companyId, itemGroups, units }: Props) {
                 disabled={loading}
                 className="rounded-lg bg-primary px-8 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60 transition-colors shadow-sm"
               >
-                {loading ? 'جارٍ الحفظ...' : 'استكمال وإضافة'}
+                {loading ? 'جارٍ الحفظ...' : initialData ? 'حفظ التعديلات' : 'استكمال وإضافة'}
               </button>
             </div>
           </div>

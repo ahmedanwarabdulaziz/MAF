@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { getInvoiceDetails, saveInvoiceLines, submitInvoiceForReceipt, confirmReceipt } from '@/actions/procurement'
+import { getInvoiceDetails, saveInvoiceLines, submitInvoiceForReceipt, confirmReceipt, receiveAdditionalQuantity } from '@/actions/procurement'
 import { createClient } from '@/lib/supabase'
 
 export default function SupplierInvoiceDetails() {
@@ -22,6 +22,8 @@ export default function SupplierInvoiceDetails() {
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [confirmSignature, setConfirmSignature] = useState<'pm' | 'warehouse_manager' | null>(null)
+  const [isPartialReceiptOpen, setPartialReceiptOpen] = useState(false)
+  const [partialInputs, setPartialInputs] = useState<Record<string, number>>({})
 
   useEffect(() => {
     load()
@@ -116,8 +118,40 @@ export default function SupplierInvoiceDetails() {
     setError(null)
     setSuccessMessage(null)
     try {
-      await confirmReceipt(inv.id, projectId, role)
+      const receivedLines = role === 'warehouse_manager'
+        ? lines.map(l => ({ id: l.id, received_quantity: l.received_quantity ?? l.invoiced_quantity }))
+        : undefined
+
+      await confirmReceipt(inv.id, projectId, role, receivedLines)
       setSuccessMessage('تم اعتماد التوقيع بنجاح!')
+      await load()
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handlePartialSubmit() {
+    if (!inv) return
+    setSaving(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    const payload = Object.entries(partialInputs)
+      .map(([id, qty]) => ({ id, new_quantity: Number(qty) }))
+      .filter(x => x.new_quantity > 0)
+
+    if (payload.length === 0) {
+      setError('يرجى إدخال كمية واحدة على الأقل.')
+      setSaving(false)
+      return
+    }
+
+    try {
+      await receiveAdditionalQuantity(inv.id, projectId, payload)
+      setSuccessMessage('تم استلام وتسجيل الكميات الإضافية بنجاح')
+      setPartialReceiptOpen(false)
       await load()
     } catch (err: any) {
       setError(err.message)
@@ -190,7 +224,22 @@ export default function SupplierInvoiceDetails() {
             <div className={`flex flex-col items-center p-3 rounded-lg border ${conf?.warehouse_manager_status === 'approved' ? 'bg-success/10 border-success' : 'bg-white border-border'}`}>
               <span className="text-xs font-bold mb-2">أمين المخزن</span>
               {conf?.warehouse_manager_status === 'approved' ? (
-                <span className="text-sm font-bold text-success">✓ تم الاستلام</span>
+                <>
+                  <span className="text-sm font-bold text-success">✓ تم الاستلام</span>
+                  {inv.discrepancy_status === 'pending' && inv.can_wh_approve && (
+                    <button
+                      onClick={() => {
+                        const ini: Record<string, number> = {}
+                        lines.forEach(l => ini[l.id] = 0)
+                        setPartialInputs(ini)
+                        setPartialReceiptOpen(true)
+                      }}
+                      className="mt-2 rounded bg-navy text-white px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-navy/90"
+                    >
+                      استكمال النواقص
+                    </button>
+                  )}
+                </>
               ) : inv.can_wh_approve ? (
                 <button onClick={() => handleConfirmSignature('warehouse_manager')} className="rounded bg-navy text-white px-3 py-1.5 text-xs font-semibold hover:bg-navy/80">
                   توقيع الاستلام
@@ -310,12 +359,70 @@ export default function SupplierInvoiceDetails() {
       {confirmSignature && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={() => setConfirmSignature(null)} />
-          <div className="relative w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl border border-border">
-            <h3 className="text-xl font-bold text-navy mb-4 text-right">تأكيد توقيع الاستلام</h3>
-            <p className="text-text-secondary text-right mb-6">
-              تأكيد التوقيع الإلكتروني على البضاعة المستلمة؟ سيتم تحويلها لعهدتك في المخزن ولا يمكن التراجع عن ذلك.
-            </p>
-            <div className="flex gap-3 justify-end">
+          <div className={`relative w-full ${confirmSignature === 'warehouse_manager' ? 'max-w-4xl' : 'max-w-md'} rounded-2xl bg-white p-6 shadow-2xl border border-border flex flex-col max-h-[90vh]`}>
+            <h3 className="text-xl font-bold text-navy mb-4 text-right">
+              {confirmSignature === 'warehouse_manager' ? 'تأكيد استلام البضاعة وإدخال المخزن' : 'تأكيد توقيع الاستلام'}
+            </h3>
+            
+            {confirmSignature === 'warehouse_manager' ? (
+              <div className="flex-1 overflow-y-auto mb-6 bg-background-secondary/30 rounded-xl border border-border hide-scrollbar text-right">
+                <p className="p-4 text-sm text-text-secondary bg-white border-b border-border">
+                  الرجاء مراجعة وإدخال الكميات المستلمة فعلياً. سيتم تسجيل المخزون بناءً على هذه الأرقام، وفي حال النقص سيتم تحويل الفاتورة لتسوية الفروق (إشعار خصم).
+                </p>
+                {loading ? (
+                  <div className="p-8 text-center text-text-secondary animate-pulse">جاري تحميل الأصناف...</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm whitespace-nowrap">
+                      <thead className="bg-background-secondary border-b border-border">
+                        <tr>
+                          <th className="font-semibold px-4 py-3 border-b text-navy text-right">الصنف</th>
+                          <th className="font-semibold px-4 py-3 border-b text-navy text-center w-[15%]">الكمية المفوترة</th>
+                          <th className="font-semibold px-4 py-3 border-b text-navy text-center w-[25%] bg-blue-50">الكمية المستلمة فعلياً</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {lines.map((line: any, idx: number) => {
+                          const item = Array.isArray(line.item) ? line.item[0] : line.item
+                          const rqty = line.received_quantity ?? line.invoiced_quantity
+                          const hasDiff = Number(rqty) < Number(line.invoiced_quantity)
+                          return (
+                            <tr key={idx} className="bg-white hover:bg-gray-50/50">
+                              <td className="px-4 py-3 font-medium text-text-primary text-right">{item?.item_code} - {item?.arabic_name || '---'}</td>
+                              <td className="px-4 py-3 text-center dir-ltr text-text-secondary font-bold">{Number(line.invoiced_quantity)}</td>
+                              <td className={`px-4 py-3 text-center bg-blue-50/30`}>
+                                <div className="flex flex-col items-center">
+                                  <input
+                                    type="number"
+                                    step="0.01"
+                                    min={0}
+                                    max={line.invoiced_quantity}
+                                    value={rqty}
+                                    onChange={e => {
+                                      const list = [...lines]
+                                      list[idx].received_quantity = e.target.value === '' ? 0 : Number(e.target.value)
+                                      setLines(list)
+                                    }}
+                                    className="w-24 rounded border border-blue-200 bg-white px-2 py-1.5 text-sm outline-none focus:border-blue-500 font-bold text-navy text-center dir-ltr shadow-sm transition-all"
+                                  />
+                                  {hasDiff && <span className="text-[10px] text-danger font-bold mt-1">يوجد نقص ({Number(line.invoiced_quantity) - Number(rqty)})</span>}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-text-secondary text-right mb-6">
+                تأكيد التوقيع الإلكتروني على البضاعة المستلمة؟ سيتم تحويلها لعهدتك في المخزن ولا يمكن التراجع عن ذلك.
+              </p>
+            )}
+
+            <div className="flex gap-3 justify-end mt-auto pt-4 border-t border-border">
               <button
                 onClick={() => setConfirmSignature(null)}
                 disabled={saving}
@@ -325,10 +432,89 @@ export default function SupplierInvoiceDetails() {
               </button>
               <button
                 onClick={executeConfirmSignature}
-                disabled={saving}
+                disabled={saving || (loading && confirmSignature === 'warehouse_manager')}
                 className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors disabled:opacity-50 flex items-center gap-2 bg-success hover:bg-success/90"
               >
                 {saving ? 'جاري الاعتماد...' : 'نعم، أؤكد توقيعي'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Partial Receipt Dialog */}
+      {isPartialReceiptOpen && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={() => setPartialReceiptOpen(false)} />
+          <div className="relative w-full max-w-4xl rounded-2xl bg-white p-6 shadow-2xl border border-border flex flex-col max-h-[90vh]">
+            <h3 className="text-xl font-bold text-navy mb-4 text-right">استكمال استلام نواقص التوريد</h3>
+            <p className="text-text-secondary text-right mb-6 text-sm">
+              أدخل فقط الكمية <span className="font-bold text-primary">الجديدة المستلمة اليوم</span> لكل صنف. سيتم دمجها وإضافتها لاستلامات الفاتورة.
+            </p>
+            
+            <div className="flex-1 overflow-y-auto mb-6 bg-background-secondary/30 rounded-xl border border-border hide-scrollbar text-right">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm whitespace-nowrap">
+                  <thead className="bg-background-secondary border-b border-border">
+                    <tr>
+                      <th className="font-semibold px-4 py-3 border-b text-navy text-right">الصنف</th>
+                      <th className="font-semibold px-4 py-3 border-b text-navy text-center">المطلوب كليا</th>
+                      <th className="font-semibold px-4 py-3 border-b text-success text-center">مُستلم سابقا</th>
+                      <th className="font-semibold px-4 py-3 border-b text-danger text-center">متبقي كعجز</th>
+                      <th className="font-semibold px-4 py-3 border-b text-primary text-center bg-blue-50/50">إضافة استلام جديد</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {lines.filter(l => Number(l.received_quantity ?? l.invoiced_quantity) < Number(l.invoiced_quantity)).map((l, idx) => {
+                      const item = Array.isArray(l.item) ? l.item[0] : l.item
+                      const invoiced = Number(l.invoiced_quantity || 0)
+                      const received = Number(l.received_quantity ?? invoiced)
+                      const shortage = invoiced - received
+                      return (
+                        <tr key={l.id} className="bg-white hover:bg-gray-50/50">
+                          <td className="px-4 py-3 font-medium text-text-primary text-right">{item?.item_code} - {item?.arabic_name || '---'}</td>
+                          <td className="px-4 py-3 text-center dir-ltr text-text-secondary font-bold">{invoiced}</td>
+                          <td className="px-4 py-3 text-center dir-ltr text-success font-bold">{received}</td>
+                          <td className="px-4 py-3 text-center dir-ltr text-danger font-bold">{shortage}</td>
+                          <td className="px-4 py-3 text-center bg-blue-50/30">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min={0}
+                              max={shortage}
+                              value={partialInputs[l.id] || ''}
+                              onChange={e => {
+                                let val = e.target.value === '' ? 0 : Number(e.target.value)
+                                if (val > shortage) val = shortage
+                                if (val < 0) val = 0
+                                setPartialInputs(prev => ({ ...prev, [l.id]: val }))
+                              }}
+                              className="w-24 rounded border border-primary/40 bg-white px-2 py-1.5 text-sm outline-none focus:border-primary font-black text-primary text-center dir-ltr shadow-sm transition-all"
+                              placeholder="0"
+                            />
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex gap-3 justify-end mt-auto pt-4 border-t border-border">
+              <button
+                onClick={() => setPartialReceiptOpen(false)}
+                disabled={saving}
+                className="px-4 py-2 text-sm font-semibold rounded-lg border border-border text-text-secondary hover:bg-background-secondary transition-colors disabled:opacity-50"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={handlePartialSubmit}
+                disabled={saving || (Object.values(partialInputs).filter(v => v > 0).length === 0)}
+                className="px-4 py-2 text-sm font-semibold rounded-lg text-white transition-colors disabled:opacity-50 flex items-center gap-2 bg-primary hover:bg-primary/90"
+              >
+                {saving ? 'جاري الاعتماد...' : 'استكمال وتسجيل الإذن'}
               </button>
             </div>
           </div>

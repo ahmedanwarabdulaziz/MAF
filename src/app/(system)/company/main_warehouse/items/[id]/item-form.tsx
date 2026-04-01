@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createItem, updateItem, createUnit } from '@/actions/warehouse'
 import { createClient } from '@/lib/supabase'
+import Image from 'next/image'
 
 interface ItemGroup {
   id: string
@@ -371,6 +372,8 @@ export default function ItemForm({ companyId, itemGroups, units, initialData }: 
   const [unitModal, setUnitModal] = useState<null | 'primary' | 'purchase'>(null)
   const [isActive, setIsActive] = useState<boolean>(initialData?.is_active ?? true)
   const [isStocked, setIsStocked] = useState<boolean>(initialData?.is_stocked ?? true)
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(initialData?.image_url ?? null)
 
   useEffect(() => {
     if (initialData?.item_code) return
@@ -397,6 +400,34 @@ export default function ItemForm({ companyId, itemGroups, units, initialData }: 
     const formData = new FormData(e.currentTarget)
     
     try {
+      let image_url = initialData?.image_url ?? null
+      
+      if (imageFile) {
+        const supabase = createClient()
+        const fileExt = imageFile.name.split('.').pop()
+        const fileName = `${companyId}/${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('items')
+          .upload(fileName, imageFile, {
+            cacheControl: '3600',
+            upsert: false
+          })
+          
+        if (uploadError) {
+          throw new Error('فشل رفع الصورة: ' + uploadError.message)
+        }
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('items')
+          .getPublicUrl(fileName)
+          
+        image_url = publicUrl
+      } else if (!imagePreview && image_url) {
+        // user removed the image
+        image_url = null
+      }
+
       const data = {
         company_id: companyId,
         item_group_id: selectedGroupId,
@@ -408,6 +439,7 @@ export default function ItemForm({ companyId, itemGroups, units, initialData }: 
         is_active: initialData ? isActive : true,
         min_stock_level: null,
         notes: null,
+        image_url: image_url
       }
 
       if (initialData?.id) {
@@ -437,55 +469,103 @@ export default function ItemForm({ companyId, itemGroups, units, initialData }: 
         {/* Basic Info */}
         <div>
           <h3 className="text-sm font-bold text-text-primary mb-4 pb-2 border-b border-border">البيانات الأساسية</h3>
-          <div className="grid gap-6 md:grid-cols-2">
-            {/* Item Code — auto-generated read-only */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-text-primary">كود الصنف</label>
-              <div className="flex items-center rounded-lg border border-border bg-background-secondary/60 px-4 py-2" dir="ltr">
-                <span className="text-sm font-bold text-primary tracking-widest">{autoCode}</span>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-6 lg:col-span-2">
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Item Code — auto-generated read-only */}
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-text-primary">كود الصنف</label>
+                  <div className="flex items-center rounded-lg border border-border bg-background-secondary/60 px-4 py-2" dir="ltr">
+                    <span className="text-sm font-bold text-primary tracking-widest">{autoCode}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-text-primary">
+                    المجموعة <span className="text-danger">*</span>
+                  </label>
+                  <GroupPicker
+                    groups={itemGroups}
+                    value={selectedGroupId}
+                    onChange={id => { setSelectedGroupId(id); setGroupError(false) }}
+                  />
+                  {groupError && (
+                    <p className="text-xs text-danger">يرجى اختيار مجموعة الصنف</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid gap-6 md:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="arabic_name" className="text-sm font-medium text-text-primary">
+                    الاسم (عربي) <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="arabic_name"
+                    name="arabic_name"
+                    required
+                    defaultValue={initialData?.arabic_name}
+                    className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="english_name" className="text-sm font-medium text-text-primary">
+                    الاسم (إنجليزي)
+                  </label>
+                  <input
+                    type="text"
+                    id="english_name"
+                    name="english_name"
+                    defaultValue={initialData?.english_name}
+                    className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    dir="ltr"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-text-primary">
-                المجموعة <span className="text-danger">*</span>
-              </label>
-              <GroupPicker
-                groups={itemGroups}
-                value={selectedGroupId}
-                onChange={id => { setSelectedGroupId(id); setGroupError(false) }}
-              />
-              {groupError && (
-                <p className="text-xs text-danger">يرجى اختيار مجموعة الصنف</p>
+            <div className="space-y-2 h-full">
+              <label className="text-sm font-medium text-text-primary block">صورة الصنف</label>
+              <div className="h-[148px] rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center p-2 relative overflow-hidden bg-background-secondary/30 hover:bg-background-secondary/60 transition-colors group">
+                {imagePreview ? (
+                  <>
+                    <Image src={imagePreview} alt="Preview" fill className="object-contain p-1" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <p className="text-white text-xs font-medium">تغيير الصورة</p>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-center text-text-secondary flex flex-col items-center">
+                    <svg className="w-8 h-8 mb-2 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    <span className="text-xs">اضغط لرفع صورة</span>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setImageFile(file)
+                      setImagePreview(URL.createObjectURL(file))
+                    }
+                  }}
+                />
+              </div>
+              {imagePreview && (
+                <button
+                  type="button"
+                  onClick={() => { setImageFile(null); setImagePreview(null) }}
+                  className="text-xs text-danger w-full text-center mt-1 hover:underline font-medium"
+                >
+                  إزالة الصورة
+                </button>
               )}
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="arabic_name" className="text-sm font-medium text-text-primary">
-                الاسم (عربي) <span className="text-danger">*</span>
-              </label>
-              <input
-                type="text"
-                id="arabic_name"
-                name="arabic_name"
-                required
-                defaultValue={initialData?.arabic_name}
-                className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label htmlFor="english_name" className="text-sm font-medium text-text-primary">
-                الاسم (إنجليزي)
-              </label>
-              <input
-                type="text"
-                id="english_name"
-                name="english_name"
-                defaultValue={initialData?.english_name}
-                className="w-full rounded-lg border border-border px-4 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                dir="ltr"
-              />
             </div>
           </div>
         </div>

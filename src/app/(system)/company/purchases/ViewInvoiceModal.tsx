@@ -170,6 +170,10 @@ export default function ViewInvoiceModal({ id }: { id: string }) {
                         <span className="font-semibold text-red-600">{fmt(data.returned_amount || 0)}</span>
                         <span className="text-gray-500" dir="rtl">مرتجعات</span>
                       </div>
+                      <div className="flex justify-between text-sm" dir="ltr">
+                        <span className="font-semibold text-success">{fmt(data.paid_to_date || 0)}</span>
+                        <span className="text-gray-500" dir="rtl">المُسدّد</span>
+                      </div>
                       <div className="flex justify-between text-sm border-t border-navy/10 pt-2 mt-2" dir="ltr">
                         <span className="font-bold text-primary">{fmt(data.outstanding_amount)}</span>
                         <span className="text-gray-500" dir="rtl">الرصيد المتبقي</span>

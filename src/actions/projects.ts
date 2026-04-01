@@ -70,7 +70,8 @@ export async function createProject(input: CreateProjectInput): Promise<{ id: st
     },
   })
 
-  revalidatePath('/company/projects')
+  revalidatePath('/company/projects', 'page')
+  revalidatePath('/company/projects', 'layout')
   return { id: data.id }
 }
 
@@ -96,7 +97,8 @@ export async function updateProject(id: string, updates: any) {
     metadata: { updates },
   })
 
-  revalidatePath('/company/projects')
-  revalidatePath(`/company/projects/${id}`)
+  revalidatePath('/company/projects', 'page')
+  revalidatePath('/company/projects', 'layout')
+  revalidatePath(`/company/projects/${id}`, 'page')
   return { id: data.id }
 }

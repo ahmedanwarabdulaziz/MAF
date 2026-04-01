@@ -54,3 +54,14 @@ export function formatCurrency(value: number | null | undefined): string {
     minimumFractionDigits: 2,
   }).format(Number(value))
 }
+
+/**
+ * Format a number to 2 decimal places with comma separation
+ */
+export function formatNumber(value: number | null | undefined): string {
+  if (value == null || isNaN(Number(value))) return '—'
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value))
+}

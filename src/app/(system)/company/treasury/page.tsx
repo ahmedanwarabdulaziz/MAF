@@ -56,50 +56,48 @@ export default async function CorporateTreasuryDashboard() {
   const totalProjBal = projectAccounts.reduce((sum, a) => sum + Number(a.current_balance), 0)
 
   const AccountCard = ({ acc, showProjectContext = false }: { acc: any, showProjectContext?: boolean }) => {
-    const typeInfo = ACCOUNT_TYPE_LABELS[acc.account_type] || { label: acc.account_type, icon: '💰', color: 'bg-gray-50 text-gray-700 border-gray-200' }
+    const typeInfo = ACCOUNT_TYPE_LABELS[acc.account_type] || { label: acc.account_type, icon: '💰' }
     const balance = Number(acc.current_balance || 0)
     const isLow = balance < 1000
 
     return (
       <Link
         href={`/company/treasury/${acc.financial_account_id}`}
-        className="group flex flex-col justify-between rounded-xl border border-border bg-white shadow-sm hover:border-primary/40 hover:shadow-md transition-all p-4 space-y-3"
+        className="group block w-full text-right overflow-hidden rounded-xl border border-border bg-white shadow-sm hover:shadow-md hover:border-primary/30 transition-all focus:outline-none focus:ring-2 focus:ring-primary/50"
       >
-        <div>
-          {/* Type badge + status */}
-          <div className="flex items-start justify-between gap-2">
-            <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${typeInfo.color}`}>
-              <span>{typeInfo.icon}</span>
-              {typeInfo.label}
+        <div className="bg-navy px-5 py-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-3">
+              <span className="w-fit rounded bg-white/20 px-2.5 py-1 text-xs font-medium text-white shadow-inner flex items-center gap-1.5" dir="rtl">
+                <span>{typeInfo.icon}</span>
+                {typeInfo.label}
+              </span>
+              <div className="text-lg font-bold text-white group-hover:text-white/90 transition-colors leading-tight">
+                {acc.arabic_name}
+              </div>
+            </div>
+            <span className={`mt-0.5 inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${acc.is_active ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-500/30' : 'bg-white/10 text-white border border-white/20'}`}>
+              {acc.is_active ? 'نشط' : 'معطّل'}
             </span>
-            <div className={`w-2 h-2 rounded-full shrink-0 mt-1.5 ${acc.is_active ? 'bg-emerald-400' : 'bg-gray-300 shadow-inner'}`} title={acc.is_active ? 'نشط' : 'معطّل'} />
           </div>
-          
-          <h3 className="mt-2 text-sm font-bold text-navy group-hover:text-primary transition-colors line-clamp-2">
-            {acc.arabic_name}
-          </h3>
           {showProjectContext && acc.project && (
-            <p className="mt-0.5 text-[11px] font-medium text-text-secondary flex items-center gap-1">
-              <span className="text-text-primary/40 opacity-70">🏗️</span> 
+            <p className="mt-3 text-xs font-medium text-white/70 flex items-center gap-1.5">
+              <span className="opacity-70">🏗️</span> 
               <span className="line-clamp-1 truncate">{acc.project.arabic_name}</span>
             </p>
           )}
         </div>
 
-        <div>
-          {/* Balance block */}
-          <div className={`rounded-lg px-3 py-2 mt-3 ${isLow ? 'bg-red-50/50 border border-red-100' : 'bg-background-secondary'}`}>
-            <p className="text-[10px] font-semibold text-text-secondary mb-0.5 uppercase tracking-wide">الرصيد الحالي</p>
-            <p className={`text-lg font-black dir-ltr ${isLow ? 'text-red-600' : 'text-navy'}`}>
-              {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </p>
-            {isLow && balance > 0 && <p className="text-[10px] font-bold text-red-500 mt-1 uppercase">رصيد منخفض</p>}
-            {balance === 0 && <p className="text-[10px] text-text-secondary mt-1">لا توجد حركات</p>}
-          </div>
-
-          <div className="mt-3 flex items-center justify-between text-xs font-medium text-text-secondary">
-            <span>عرض الحركات والكشف</span>
-            <span className="group-hover:-translate-x-1 transition-transform opacity-50 group-hover:opacity-100 text-primary">←</span>
+        <div className="p-4 bg-white border-t border-border flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1 text-right">
+            <span className="text-xs font-medium text-text-tertiary">الرصيد الحالي</span>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-sm font-bold dir-ltr ${isLow ? 'text-red-600' : 'text-text-primary'}`}>
+                {balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </span>
+              {isLow && balance > 0 && <span className="text-[10px] font-bold text-red-500 uppercase">رصيد منخفض</span>}
+              {balance === 0 && <span className="text-[10px] text-text-secondary">لا توجد حركات</span>}
+            </div>
           </div>
         </div>
       </Link>
@@ -123,25 +121,34 @@ export default async function CorporateTreasuryDashboard() {
       </div>
 
       {/* KPI Cards Combined */}
-      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden mb-4 max-w-sm">
+      <div className="rounded-xl border border-border bg-white shadow-sm overflow-hidden mb-6 max-w-lg">
         <div className="flex flex-col">
-          <div className="bg-white p-3 border-b border-border">
-            <p className="text-[11px] font-semibold text-text-secondary">إجمالي سيولة الشركة المباشرة</p>
-            <p className="mt-0.5 text-sm font-bold text-primary dir-ltr text-right">
+          <div className="bg-white p-4 border-b border-border flex items-center justify-between gap-4">
+            <span className="text-xs font-semibold text-text-secondary flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary/70"></span>
+              إجمالي سيولة الشركة المباشرة
+            </span>
+            <span className="text-sm font-bold text-primary dir-ltr">
               {totalCorpBal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </p>
+            </span>
           </div>
-          <div className="bg-white p-3 border-b border-border">
-            <p className="text-[11px] font-semibold text-text-secondary">إجمالي عهد وخزائن المشاريع</p>
-            <p className="mt-0.5 text-sm font-bold text-secondary dir-ltr text-right">
+          <div className="bg-white p-4 border-b border-border flex items-center justify-between gap-4">
+            <span className="text-xs font-semibold text-text-secondary flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-secondary/70"></span>
+              إجمالي عهد وخزائن المشاريع
+            </span>
+            <span className="text-sm font-bold text-secondary dir-ltr">
               {totalProjBal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </p>
+            </span>
           </div>
-          <div className="bg-background-secondary/50 p-3">
-            <p className="text-xs font-bold text-navy">إجمالي الأرصدة الكلية للتنظيم</p>
-            <p className="mt-0.5 text-base font-black text-success-dark dir-ltr text-right">
+          <div className="bg-background-secondary/50 p-4 flex items-center justify-between gap-4">
+            <span className="text-sm font-bold text-navy flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-success"></span>
+              إجمالي الأرصدة الكلية للتنظيم
+            </span>
+            <span className="text-lg font-black text-success-dark dir-ltr">
               {(totalCorpBal + totalProjBal).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </p>
+            </span>
           </div>
         </div>
       </div>

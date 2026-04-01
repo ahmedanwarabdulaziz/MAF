@@ -4,9 +4,9 @@ import { getSubcontractorStatements } from '@/actions/certificates'
 export default async function SubcontractorsStatementPage({ params }: { params: { id: string } }) {
   const statements = await getSubcontractorStatements(params.id)
 
-  const overallGross = statements.reduce((s, row) => s + row.total_gross, 0)
-  const overallNet = statements.reduce((s, row) => s + row.total_net_payable, 0)
-  const overallTaaliya = statements.reduce((s, row) => s + row.total_taaliya, 0)
+  const overallGross    = statements.reduce((s, row) => s + Number(row.total_gross    || 0), 0)
+  const overallNet      = statements.reduce((s, row) => s + Number(row.total_net_payable || 0), 0)
+  const overallTaaliya  = statements.reduce((s, row) => s + Number(row.total_taaliya  || 0), 0)
 
   return (
     <div className="space-y-6">
@@ -60,19 +60,19 @@ export default async function SubcontractorsStatementPage({ params }: { params: 
                       </Link>
                     </td>
                     <td className="px-5 py-4 font-semibold text-text-primary dir-ltr text-right">
-                      {st.total_gross.toLocaleString()}
+                      {Number(st.total_gross || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-4 font-semibold text-amber-600 dir-ltr text-right bg-amber-50/20">
-                      {st.total_taaliya.toLocaleString()}
+                      {Number(st.total_taaliya || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-4 font-bold text-success dir-ltr text-right">
-                      {st.total_net_payable.toLocaleString()}
+                      {Number(st.total_net_payable || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-4 text-text-secondary dir-ltr text-right">
-                      {st.total_paid.toLocaleString()}
+                      {Number(st.total_paid || 0).toLocaleString()}
                     </td>
                     <td className="px-5 py-4 font-bold text-danger dir-ltr text-right bg-red-50/20">
-                      {st.total_outstanding.toLocaleString()}
+                      {Number(st.total_outstanding || 0).toLocaleString()}
                     </td>
                   </tr>
                 ))}

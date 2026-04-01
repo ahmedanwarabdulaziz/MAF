@@ -178,129 +178,137 @@ export default function PurchaseRequestForm({ projectId, onSuccess, onCancel, in
 
           {/* Lines */}
           <div className="bg-white rounded-xl border border-border p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-text-primary">بنود المواد المطلوبة</h2>
+            <div className="flex items-center justify-between pb-3 border-b border-border/50 mb-4">
+              <h2 className="text-xl font-black text-navy flex items-center gap-2">
+                <span className="w-2 h-6 bg-primary rounded-full inline-block"></span>
+                بنود المواد المطلوبة
+              </h2>
               <button
                 type="button"
                 onClick={addLine}
-                className="text-sm font-medium text-primary hover:text-navy transition-colors flex items-center gap-1"
+                className="px-4 py-2 rounded-xl bg-primary/10 text-primary font-bold text-sm hover:bg-primary hover:text-white transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-2"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 mt-0.5">
+                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
                 </svg>
-                إضافة بند أخر
+                إضافة مادة للصرف
               </button>
             </div>
 
             <div className="space-y-3">
               {lines.map((line, idx) => (
-                <div key={idx} className="flex gap-4 items-start bg-background-secondary/50 p-4 rounded-lg border border-border">
-                  <div className="flex-1 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="flex flex-col gap-1 md:col-span-2">
-                        <label className="text-xs font-semibold text-text-secondary">الصنف (المادة) <span className="text-danger">*</span></label>
-                        <CustomSelect
-                          searchable
-                          required
-                          value={line.item_id}
-                          onChange={val => updateLine(idx, 'item_id', val)}
-                          options={(() => {
-                            const result: any[] = []
-                            const getChildren = (parentId: string | null, depth: number) => {
-                              const subGroups = itemGroups.filter(g => g.parent_group_id === parentId)
-                              subGroups.sort((a,b) => a.arabic_name.localeCompare(b.arabic_name)).forEach(g => {
+                <div key={idx} className="flex flex-col md:flex-row gap-4 items-start bg-background-secondary/30 p-5 rounded-2xl border border-border hover:border-primary/40 hover:shadow-sm transition-all group relative">
+                  
+                  {/* Item Number */}
+                  <div className="w-8 h-8 rounded-full bg-navy text-white flex items-center justify-center text-sm font-bold shrink-0 mt-[1.6rem] hidden md:flex shadow-sm">
+                    {idx + 1}
+                  </div>
+
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-12 gap-5 w-full">
+                    {/* Item */}
+                    <div className="flex flex-col gap-1.5 md:col-span-5 relative">
+                      <label className="text-sm font-bold text-navy flex items-center gap-1.5">
+                        الصنف (المادة) <span className="text-danger">*</span>
+                      </label>
+                      <CustomSelect
+                        searchable
+                        required
+                        value={line.item_id}
+                        onChange={val => updateLine(idx, 'item_id', val)}
+                        options={(() => {
+                          const result: any[] = []
+                          const getChildren = (parentId: string | null, depth: number) => {
+                            const subGroups = itemGroups.filter(g => g.parent_group_id === parentId)
+                            subGroups.sort((a,b) => a.arabic_name.localeCompare(b.arabic_name)).forEach(g => {
+                              result.push({ 
+                                value: `group-${g.id}`, 
+                                label: '\u00a0'.repeat(depth * 3) + (depth > 0 ? '└ ' : '') + g.arabic_name, 
+                                isHeader: true 
+                              })
+                              const gItems = items.filter(it => {
+                                const gId = Array.isArray(it.item_group) ? it.item_group[0]?.id : it.item_group?.id
+                                return gId === g.id
+                              })
+                              gItems.sort((a,b) => a.arabic_name.localeCompare(b.arabic_name)).forEach(it => {
                                 result.push({ 
-                                  value: `group-${g.id}`, 
-                                  label: '\u00a0'.repeat(depth * 3) + (depth > 0 ? '└ ' : '') + g.arabic_name, 
-                                  isHeader: true 
+                                  value: it.id, 
+                                  label: '\u00a0'.repeat((depth + 1) * 3) + '└ ' + it.item_code + ' - ' + it.arabic_name 
                                 })
-                                const gItems = items.filter(it => {
-                                  const gId = Array.isArray(it.item_group) ? it.item_group[0]?.id : it.item_group?.id
-                                  return gId === g.id
-                                })
-                                gItems.sort((a,b) => a.arabic_name.localeCompare(b.arabic_name)).forEach(it => {
-                                  result.push({ 
-                                    value: it.id, 
-                                    label: '\u00a0'.repeat((depth + 1) * 3) + '└ ' + it.item_code + ' - ' + it.arabic_name 
-                                  })
-                                })
-                                getChildren(g.id, depth + 1)
                               })
-                            }
-
-                            getChildren(null, 0)
-
-                            const ungrouped = items.filter(it => {
-                              const gId = Array.isArray(it.item_group) ? it.item_group[0]?.id : it.item_group?.id
-                              return !gId
+                              getChildren(g.id, depth + 1)
                             })
-                            if (ungrouped.length > 0) {
-                              result.push({ value: 'header-ungrouped', label: 'أصناف غير مصنفة', isHeader: true })
-                              ungrouped.sort((a,b) => a.arabic_name.localeCompare(b.arabic_name)).forEach(it => {
-                                result.push({ value: it.id, label: `\u00a0\u00a0└ ${it.item_code} - ${it.arabic_name}` })
-                              })
-                            }
-                            return result
-                          })()}
-                          placeholder="اختر الصنف من الدليل..."
-                          dropdownMinWidth={280}
-                        />
-                        {line.item_id && itemsWithStock.has(line.item_id) && (
-                          <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-800">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 shrink-0 text-amber-500 mt-0.5">
-                              <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
-                            </svg>
-                            <span>هذا الصنف متوفر بمخازن الشركة، يرجى الاستعلام من الإدارة قبل شرائه.</span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-text-secondary">الكمية المطلوبة <span className="text-danger">*</span></label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          required
-                          value={line.requested_quantity}
-                          onChange={e => updateLine(idx, 'requested_quantity', Number(e.target.value))}
-                          className="rounded-md border border-border bg-white px-2 py-1.5 text-sm outline-none focus:border-primary dir-ltr text-right"
-                        />
-                      </div>
+                          }
+
+                          getChildren(null, 0)
+
+                          const ungrouped = items.filter(it => {
+                            const gId = Array.isArray(it.item_group) ? it.item_group[0]?.id : it.item_group?.id
+                            return !gId
+                          })
+                          if (ungrouped.length > 0) {
+                            result.push({ value: 'header-ungrouped', label: 'أصناف غير مصنفة', isHeader: true })
+                            ungrouped.sort((a,b) => a.arabic_name.localeCompare(b.arabic_name)).forEach(it => {
+                              result.push({ value: it.id, label: `\u00a0\u00a0└ ${it.item_code} - ${it.arabic_name}` })
+                            })
+                          }
+                          return result
+                        })()}
+                        placeholder="ابحث عن الصنف بالاسم أو الكود..."
+                        dropdownMinWidth={280}
+                      />
+                      {line.item_id && itemsWithStock.has(line.item_id) && (
+                        <div className="mt-1.5 flex items-start gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-2 text-[11px] font-medium text-amber-800">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 shrink-0 text-amber-500 mt-0.5">
+                            <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                          </svg>
+                          <span>هذا الصنف متوفر بمخازن الشركة، يرجى مراجعة أرصدة المخازن لتفادي شراء كميات إضافية.</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="flex flex-col gap-1">
-                        <label className="text-xs font-semibold text-text-secondary">السعر التقديري للوحدة (اختياري)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={line.estimated_unit_price}
-                          onChange={e => updateLine(idx, 'estimated_unit_price', Number(e.target.value))}
-                          className="rounded-md border border-border bg-white px-2 py-1.5 text-sm outline-none focus:border-primary dir-ltr text-right"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-1 md:col-span-2">
-                        <label className="text-xs font-semibold text-text-secondary">ملاحظات البند</label>
-                        <input
-                          type="text"
-                          value={line.notes}
-                          onChange={e => updateLine(idx, 'notes', e.target.value)}
-                          placeholder="مواصفات، لون، متطلبات خاصة..."
-                          className="rounded-md border border-border bg-white px-2 py-1.5 text-sm outline-none focus:border-primary"
-                        />
-                      </div>
+
+                    {/* Quantity */}
+                    <div className="flex flex-col gap-1.5 md:col-span-3">
+                      <label className="text-sm font-bold text-navy">الكمية المطلوبة <span className="text-danger">*</span></label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        required
+                        value={line.requested_quantity || ''}
+                        onChange={e => updateLine(idx, 'requested_quantity', Number(e.target.value))}
+                        placeholder="0.00"
+                        className="rounded-lg border border-border bg-white px-3 py-[9px] text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary dir-ltr text-right font-black text-navy transition-all shadow-sm"
+                      />
+                    </div>
+
+                    {/* Notes */}
+                    <div className="flex flex-col gap-1.5 md:col-span-4">
+                      <label className="text-sm font-bold text-text-secondary">ملاحظات والتفاصيل</label>
+                      <input
+                        type="text"
+                        value={line.notes}
+                        onChange={e => updateLine(idx, 'notes', e.target.value)}
+                        placeholder="مواصفات، لون، متطلبات خاصة..."
+                        className="rounded-lg border border-border bg-white px-3 py-[9px] text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all font-medium shadow-sm"
+                      />
                     </div>
                   </div>
-                  {lines.length > 1 && (
+
+                  {/* Delete Action */}
+                  <div className="shrink-0 mt-2 md:mt-[1.6rem]">
                     <button
                       type="button"
                       onClick={() => removeLine(idx)}
-                      className="mt-6 text-danger hover:bg-danger/10 p-2 rounded-lg transition-colors"
+                      disabled={lines.length === 1}
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-danger/70 hover:bg-danger/10 hover:text-danger hover:shadow-sm disabled:opacity-30 disabled:hover:bg-transparent transition-all"
                       title="حذف البند"
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                       </svg>
                     </button>
-                  )}
+                  </div>
+
                 </div>
               ))}
             </div>
@@ -316,7 +324,7 @@ export default function PurchaseRequestForm({ projectId, onSuccess, onCancel, in
             </button>
             <button
               type="submit"
-              disabled={saving || items.length === 0 || lines.some(l => l.item_id && itemsWithStock.has(l.item_id))}
+              disabled={saving || items.length === 0}
               className="flex items-center gap-2 rounded-xl bg-primary px-8 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
               {saving ? (

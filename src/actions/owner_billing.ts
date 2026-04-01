@@ -46,31 +46,105 @@ export async function getOwnerBillingDetails(docId: string) {
 
   if (lErr) throw lErr
   
-  // Fetch source links separately if needed, or join
-  const { data: sourceLinks } = await supabase
-    .from('owner_billing_source_links')
-    .select('*')
-    .in('owner_billing_line_id', lines ? lines.map(l => l.id) : [])
-
-  if (lines && sourceLinks) {
-    lines.forEach(l => {
-      l.source_links = sourceLinks.filter(sl => sl.owner_billing_line_id === l.id)
-    })
-  }
-
   return { ...header, lines }
 }
+
+// -------------------------------------------------------------------
+// CUMULATIVE: find last approved doc + seed lines from it
+// -------------------------------------------------------------------
+
+export async function getLastApprovedOwnerBillingDoc(projectId: string, excludeDocId?: string) {
+  const supabase = createAdminClient()
+  let query = supabase
+    .from('owner_billing_documents')
+    .select('id, end_date, start_date')
+    .eq('project_id', projectId)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (excludeDocId) query = query.neq('id', excludeDocId)
+
+  const { data } = await query
+  return data?.[0] || null
+}
+
+// Returns lines of previous approved doc as "inherited" lines for the new draft
+export async function getPreviousOwnerBillingLines(projectId: string): Promise<any[]> {
+  const supabase = createAdminClient()
+
+  // Find last approved doc
+  const { data: docs } = await supabase
+    .from('owner_billing_documents')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  const prevDocId = docs?.[0]?.id
+  if (!prevDocId) return []
+
+  const { data: lines } = await supabase
+    .from('owner_billing_lines')
+    .select('*')
+    .eq('owner_billing_document_id', prevDocId)
+    .order('created_at', { ascending: true })
+
+  return (lines || []).map(l => ({
+    // Carry forward: previous = cumulative from last cert, current = 0
+    line_description:     l.line_description,
+    override_description: l.override_description || '',
+    previous_quantity:    Number(l.cumulative_quantity || l.quantity || 0),
+    quantity:             0,
+    cumulative_quantity:  Number(l.cumulative_quantity || l.quantity || 0),
+    unit_price:           Number(l.unit_price || 0),
+    is_material_on_site:  l.is_material_on_site || false,
+    notes:                '',
+    // Mark as inherited so UI can lock delete
+    _inherited:           true,
+  }))
+}
+
+// إجمالي التحصيلات العادية (تُستخدم في حساب "ما سبق صرفه")
+export async function getOwnerCollectedAmount(projectId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('owner_collections')
+    .select('received_amount')
+    .eq('project_id', projectId)
+
+  return (data || []).reduce((s, r) => s + Number(r.received_amount || 0), 0)
+}
+
+// إجمالي الدفعات المقدمة فقط (collection_type = 'advance')
+// تُستخدم كـ advance_deduction ثابتة في المستخلص
+export async function getOwnerAdvanceTotal(projectId: string): Promise<number> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('owner_collections')
+    .select('received_amount')
+    .eq('project_id', projectId)
+    .eq('collection_type', 'advance')
+
+  return (data || []).reduce((s, r) => s + Number(r.received_amount || 0), 0)
+}
+
+// -------------------------------------------------------------------
+// CREATE (cumulative-aware)
+// -------------------------------------------------------------------
 
 export async function createOwnerBillingDocument(payload: {
   project_id: string,
   owner_party_id: string,
   document_no: string,
   billing_date: string,
-  start_date: string,
+  start_date?: string,
   end_date: string,
   gross_amount: number,
   tax_amount: number,
   net_amount: number,
+  advance_deduction?: number,
   notes?: string,
   lines: Array<{
     line_description: string,
@@ -83,12 +157,6 @@ export async function createOwnerBillingDocument(payload: {
     line_net: number,
     is_material_on_site?: boolean,
     notes?: string,
-    source_links?: Array<{
-      source_type: string,
-      source_reference_id: string,
-      allocated_quantity: number,
-      allocated_cost: number
-    }>
   }>
 }) {
   const userClient = createClient()
@@ -98,102 +166,81 @@ export async function createOwnerBillingDocument(payload: {
   const supabase = createAdminClient()
   const { data: project } = await supabase.from('projects').select('company_id').eq('id', payload.project_id).single()
 
-  // 0. Date overlap validation
-  if (payload.start_date || payload.end_date) {
-    if (payload.start_date > payload.end_date) {
-      throw new Error('تاريخ بداية الفاتورة يجب أن يكون قبل أو يساوي تاريخ النهاية')
-    }
-  }
+  // Find previous approved doc for linking
+  const prevDoc = await getLastApprovedOwnerBillingDoc(payload.project_id)
 
-  // Find the latest valid invoice end date for the project
-  const { data: latestDocs } = await supabase
-    .from('owner_billing_documents')
-    .select('end_date')
-    .eq('project_id', payload.project_id)
-    .not('end_date', 'is', null)
-    .neq('status', 'cancelled')
-    .order('end_date', { ascending: false })
-    .limit(1)
-
-  if (latestDocs && latestDocs.length > 0 && latestDocs[0].end_date) {
-    if (new Date(payload.start_date) <= new Date(latestDocs[0].end_date)) {
-      throw new Error(`لا يمكن أن يبدأ تاريخ الفاتورة في ${payload.start_date} أو قبله، لتجنب تداخل التواريخ مع الفاتورة السابقة التي تنتهي في ${latestDocs[0].end_date}.`)
-    }
+  // Determine start_date: from previous doc's end_date+1, or provided
+  let startDate = payload.start_date || null
+  if (!startDate && prevDoc?.end_date) {
+    const d = new Date(prevDoc.end_date)
+    d.setDate(d.getDate() + 1)
+    startDate = d.toISOString().split('T')[0]
   }
 
   // 1. Create Header
   const { data: doc, error: docErr } = await supabase
     .from('owner_billing_documents')
     .insert([{
-      project_id: payload.project_id,
-      company_id: project?.company_id,
-      owner_party_id: payload.owner_party_id,
-      document_no: payload.document_no || 'تلقائي', // Let the db trigger handle it
-      billing_date: payload.billing_date,
-      start_date: payload.start_date,
-      end_date: payload.end_date,
-      status: 'draft',
-      gross_amount: payload.gross_amount,
-      tax_amount: payload.tax_amount,
-      net_amount: payload.net_amount,
-      notes: payload.notes || null,
-      created_by: user?.id
+      project_id:      payload.project_id,
+      company_id:      project?.company_id,
+      owner_party_id:  payload.owner_party_id,
+      document_no:     payload.document_no || 'تلقائي',
+      billing_date:    payload.billing_date,
+      start_date:      startDate,
+      end_date:        payload.end_date,
+      status:          'draft',
+      gross_amount:    payload.gross_amount,
+      tax_amount:      payload.tax_amount,
+      net_amount:      payload.net_amount,
+      notes:           payload.notes || null,
+      advance_deduction: payload.advance_deduction || 0,
+      previous_doc_id: prevDoc?.id || null,
+      created_by:      user?.id,
     }])
     .select()
     .single()
 
   if (docErr) throw docErr
 
-  // 2. Insert Lines & Source Links
+  // 2. Insert Lines
   if (payload.lines && payload.lines.length > 0) {
-    for (const line of payload.lines) {
-      const { data: insertedLine, error: lineErr } = await supabase
-        .from('owner_billing_lines')
-        .insert([{
-          owner_billing_document_id: doc.id,
-          line_description: line.line_description,
-          override_description: line.override_description || null,
-          previous_quantity: line.previous_quantity || 0,
-          quantity: line.quantity,
-          cumulative_quantity: line.cumulative_quantity || line.quantity,
-          is_material_on_site: line.is_material_on_site || false,
-          unit_price: line.unit_price,
-          line_gross: line.line_gross,
-          line_net: line.line_net,
-          notes: line.notes || null
-        }])
-        .select()
-        .single()
-        
-      if (lineErr) throw lineErr
+    const linesToInsert = payload.lines.map(line => ({
+      owner_billing_document_id: doc.id,
+      line_description:    line.line_description,
+      override_description: line.override_description || null,
+      previous_quantity:   line.previous_quantity || 0,
+      quantity:            line.quantity,
+      cumulative_quantity: line.cumulative_quantity || line.quantity,
+      is_material_on_site: line.is_material_on_site || false,
+      unit_price:          line.unit_price,
+      line_gross:          line.line_gross,
+      line_net:            line.line_net,
+      notes:               line.notes || null,
+    }))
 
-      if (line.source_links && line.source_links.length > 0) {
-        const linksToInsert = line.source_links.map(sl => ({
-          owner_billing_line_id: insertedLine.id,
-          source_type: sl.source_type,
-          source_reference_id: sl.source_reference_id,
-          allocated_quantity: sl.allocated_quantity,
-          allocated_cost: sl.allocated_cost
-        }))
-        const { error: linkErr } = await supabase.from('owner_billing_source_links').insert(linksToInsert)
-        if (linkErr) throw linkErr
-      }
-    }
+    const { error: lineErr } = await supabase
+      .from('owner_billing_lines')
+      .insert(linesToInsert)
+    if (lineErr) throw lineErr
   }
 
-  revalidatePath(`/company/projects/${payload.project_id}`)
+  revalidatePath(`/projects/${payload.project_id}/owner-billing`)
   return doc
 }
+
+// -------------------------------------------------------------------
+// UPDATE (cumulative-aware, replaces lines)
+// -------------------------------------------------------------------
 
 export async function updateOwnerBillingDocument(docId: string, payload: {
   project_id: string,
   owner_party_id: string,
   billing_date: string,
-  start_date: string,
   end_date: string,
   gross_amount: number,
   tax_amount: number,
   net_amount: number,
+  advance_deduction?: number,
   notes?: string,
   lines: Array<{
     line_description: string,
@@ -206,12 +253,6 @@ export async function updateOwnerBillingDocument(docId: string, payload: {
     line_net: number,
     is_material_on_site?: boolean,
     notes?: string,
-    source_links?: Array<{
-      source_type: string,
-      source_reference_id: string,
-      allocated_quantity: number,
-      allocated_cost: number
-    }>
   }>
 }) {
   const userClient = createClient()
@@ -220,48 +261,28 @@ export async function updateOwnerBillingDocument(docId: string, payload: {
 
   const supabase = createAdminClient()
 
-  // 0. Verify document is in draft/submitted
-  const { data: existingDoc } = await supabase.from('owner_billing_documents').select('status').eq('id', docId).single()
+  const { data: existingDoc } = await supabase
+    .from('owner_billing_documents')
+    .select('status, start_date')
+    .eq('id', docId)
+    .single()
+
   if (existingDoc?.status === 'approved' || existingDoc?.status === 'paid') {
     throw new Error('لا يمكن تعديل فاتورة تم اعتمادها أو تحصيلها')
-  }
-
-  // 0.1 Date overlap validation
-  if (payload.start_date || payload.end_date) {
-    if (payload.start_date > payload.end_date) {
-      throw new Error('تاريخ بداية الفاتورة يجب أن يكون قبل أو يساوي تاريخ النهاية')
-    }
-  }
-
-  // Find the latest valid invoice end date for the project, excluding this doc
-  const { data: latestDocs } = await supabase
-    .from('owner_billing_documents')
-    .select('end_date')
-    .eq('project_id', payload.project_id)
-    .neq('id', docId)
-    .not('end_date', 'is', null)
-    .neq('status', 'cancelled')
-    .order('end_date', { ascending: false })
-    .limit(1)
-
-  if (latestDocs && latestDocs.length > 0 && latestDocs[0].end_date) {
-    if (new Date(payload.start_date) <= new Date(latestDocs[0].end_date)) {
-      throw new Error(`لا يمكن أن يبدأ تاريخ الفاتورة في ${payload.start_date} أو قبله، لتجنب تداخل التواريخ مع الفاتورة السابقة التي تنتهي في ${latestDocs[0].end_date}.`)
-    }
   }
 
   // 1. Update Header
   const { data: doc, error: docErr } = await supabase
     .from('owner_billing_documents')
     .update({
-      owner_party_id: payload.owner_party_id,
-      billing_date: payload.billing_date,
-      start_date: payload.start_date,
-      end_date: payload.end_date,
-      gross_amount: payload.gross_amount,
-      tax_amount: payload.tax_amount,
-      net_amount: payload.net_amount,
-      notes: payload.notes || null
+      owner_party_id:    payload.owner_party_id,
+      billing_date:      payload.billing_date,
+      end_date:          payload.end_date,
+      gross_amount:      payload.gross_amount,
+      tax_amount:        payload.tax_amount,
+      net_amount:        payload.net_amount,
+      notes:             payload.notes || null,
+      advance_deduction: payload.advance_deduction || 0,
     })
     .eq('id', docId)
     .select()
@@ -269,48 +290,35 @@ export async function updateOwnerBillingDocument(docId: string, payload: {
 
   if (docErr) throw docErr
 
-  // 2. Delete existing lines (cascades to source_links)
-  const { error: delErr } = await supabase.from('owner_billing_lines').delete().eq('owner_billing_document_id', docId)
+  // 2. Replace lines
+  const { error: delErr } = await supabase
+    .from('owner_billing_lines')
+    .delete()
+    .eq('owner_billing_document_id', docId)
   if (delErr) throw delErr
 
-  // 3. Insert New Lines & Source Links
   if (payload.lines && payload.lines.length > 0) {
-    for (const line of payload.lines) {
-      const { data: insertedLine, error: lineErr } = await supabase
-        .from('owner_billing_lines')
-        .insert([{
-          owner_billing_document_id: doc.id,
-          line_description: line.line_description,
-          override_description: line.override_description || null,
-          previous_quantity: line.previous_quantity || 0,
-          quantity: line.quantity,
-          cumulative_quantity: line.cumulative_quantity || line.quantity,
-          is_material_on_site: line.is_material_on_site || false,
-          unit_price: line.unit_price,
-          line_gross: line.line_gross,
-          line_net: line.line_net,
-          notes: line.notes || null
-        }])
-        .select()
-        .single()
-        
-      if (lineErr) throw lineErr
+    const linesToInsert = payload.lines.map(line => ({
+      owner_billing_document_id: doc.id,
+      line_description:    line.line_description,
+      override_description: line.override_description || null,
+      previous_quantity:   line.previous_quantity || 0,
+      quantity:            line.quantity,
+      cumulative_quantity: line.cumulative_quantity || line.quantity,
+      is_material_on_site: line.is_material_on_site || false,
+      unit_price:          line.unit_price,
+      line_gross:          line.line_gross,
+      line_net:            line.line_net,
+      notes:               line.notes || null,
+    }))
 
-      if (line.source_links && line.source_links.length > 0) {
-        const linksToInsert = line.source_links.map(sl => ({
-          owner_billing_line_id: insertedLine.id,
-          source_type: sl.source_type,
-          source_reference_id: sl.source_reference_id,
-          allocated_quantity: sl.allocated_quantity,
-          allocated_cost: sl.allocated_cost
-        }))
-        const { error: linkErr } = await supabase.from('owner_billing_source_links').insert(linksToInsert)
-        if (linkErr) throw linkErr
-      }
-    }
+    const { error: lineErr } = await supabase
+      .from('owner_billing_lines')
+      .insert(linesToInsert)
+    if (lineErr) throw lineErr
   }
 
-  revalidatePath(`/company/projects/${payload.project_id}`)
+  revalidatePath(`/projects/${payload.project_id}/owner-billing`)
   return doc
 }
 
@@ -322,12 +330,35 @@ export async function updateOwnerBillingStatus(docId: string, status: 'submitted
     .eq('id', docId)
 
   if (error) throw error
-  revalidatePath(`/company/projects/${projectId}`)
+  revalidatePath(`/projects/${projectId}/owner-billing`)
 }
 
+// -------------------------------------------------------------------
+// CHECK — هل هناك فاتورة قيد المسودة (منع إنشاء جديدة)
+// -------------------------------------------------------------------
+
+export async function getOwnerBillingPendingStatus(projectId: string): Promise<{
+  hasPending: boolean
+  pendingNo: string | null
+  pendingStatus: string | null
+}> {
+  const supabase = createAdminClient()
+  const { data } = await supabase
+    .from('owner_billing_documents')
+    .select('id, document_no, status')
+    .eq('project_id', projectId)
+    .in('status', ['draft', 'submitted'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+
+  if (data && data.length > 0) {
+    return { hasPending: true, pendingNo: data[0].document_no, pendingStatus: data[0].status }
+  }
+  return { hasPending: false, pendingNo: null, pendingStatus: null }
+}
 
 // -------------------------------------------------------------------
-// OWNER COLLECTIONS
+// LAST END DATE (for display)
 // -------------------------------------------------------------------
 
 export async function getLastOwnerBillingEndDate(projectId: string, excludeDocId?: string) {
@@ -337,12 +368,10 @@ export async function getLastOwnerBillingEndDate(projectId: string, excludeDocId
     .eq('project_id', projectId)
     .not('end_date', 'is', null)
     .neq('status', 'cancelled')
-    .order('end_date', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(1)
 
-  if (excludeDocId) {
-     query = query.neq('id', excludeDocId)
-  }
+  if (excludeDocId) query = query.neq('id', excludeDocId)
 
   const { data, error } = await query
   if (error) return null
@@ -354,7 +383,7 @@ export async function getLastOwnerBillingEndDate(projectId: string, excludeDocId
 // -------------------------------------------------------------------
 
 export async function getOwnerCollections(projectId?: string) {
-  const supabase = createClient()
+  const supabase = createAdminClient()          // admin — bypass RLS
   let query = supabase.from('owner_collections').select(`
     *,
     owner:owner_party_id(arabic_name),
@@ -377,33 +406,96 @@ export async function recordOwnerCollection(payload: {
   received_date: string,
   payment_method: string,
   reference_no?: string,
+  treasury_id?: string,
+  collection_type?: 'regular' | 'advance',
   notes?: string
 }) {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  // نجيب الـ user من الـ client العادي (اللي بيحمل JWT)
+  const { data: { user } } = await createClient().auth.getUser()
+  const supabase = createAdminClient()
   const { data: project } = await supabase.from('projects').select('company_id').eq('id', payload.project_id).single()
 
   const { data: collection, error } = await supabase
     .from('owner_collections')
     .insert([{
-      project_id: payload.project_id,
-      company_id: project?.company_id,
-      owner_billing_document_id: payload.owner_billing_document_id || null,
-      owner_party_id: payload.owner_party_id,
-      received_amount: payload.received_amount,
-      received_date: payload.received_date,
-      payment_method: payload.payment_method,
-      reference_no: payload.reference_no || null,
-      notes: payload.notes || null,
-      created_by: user?.id
+      project_id:                  payload.project_id,
+      company_id:                  project?.company_id,
+      owner_billing_document_id:   payload.owner_billing_document_id || null,
+      owner_party_id:              payload.owner_party_id,
+      received_amount:             payload.received_amount,
+      received_date:               payload.received_date,
+      payment_method:              payload.payment_method,
+      reference_no:                payload.reference_no || null,
+      financial_account_id:        payload.treasury_id || null,
+      collection_type:             payload.collection_type || 'regular',
+      notes:                       payload.notes || null,
+      created_by:                  user?.id,
     }])
     .select()
     .single()
 
   if (error) throw error
 
-  revalidatePath(`/company/projects/${payload.project_id}`)
+  // ―― تحديث رصيد الحساب المالي (financial_transactions) ――
+  // الخزينة لا تُحدَّث إلا عبر تسجيل حركة في financial_transactions
+  if (payload.treasury_id) {
+    const txNote = payload.collection_type === 'advance'
+      ? `دفعة مقدمة من المالك${payload.notes ? ' ― ' + payload.notes : ''}`
+      : `تحصيل من المالك${payload.reference_no ? ' #' + payload.reference_no : ''}${payload.notes ? ' ― ' + payload.notes : ''}`
+
+    const { error: txErr } = await supabase
+      .from('financial_transactions')
+      .insert({
+        financial_account_id: payload.treasury_id,
+        transaction_date:     payload.received_date,
+        transaction_type:     'deposit',
+        amount:               payload.received_amount,
+        reference_type:       payload.collection_type === 'advance' ? 'owner_advance' : 'owner_collection',
+        reference_id:         collection?.id || null,
+        notes:                txNote,
+        created_by:           user?.id,
+      })
+
+    if (txErr) {
+      // لا نوقف العملية كلها بسبب فشل الخزينة — نسجل الخطأ فقط
+      console.error('Failed to record treasury transaction:', txErr.message)
+    }
+  }
+
+  revalidatePath(`/projects/${payload.project_id}/owner-billing`)
+  revalidatePath(`/projects/${payload.project_id}/collections`)
+  revalidatePath('/company/treasury')
   return collection
+}
+
+// قائمة الحسابات المالية المتاحة (خزائن / بنوك) للشركة المرتبطة بالمشروع
+export async function getTreasuriesForProject(projectId: string) {
+  const supabase = createAdminClient()
+
+  // Get company_id from project
+  const { data: project } = await supabase
+    .from('projects')
+    .select('company_id')
+    .eq('id', projectId)
+    .single()
+
+  if (!project?.company_id) return []
+
+  // Query financial_accounts — company-level or project-level accounts that are active
+  const { data, error } = await supabase
+    .from('financial_accounts')
+    .select('id, arabic_name, account_type')
+    .eq('company_id', project.company_id)
+    .eq('is_active', true)
+    .order('account_type')
+    .order('arabic_name')
+
+  if (error) { console.error('getTreasuriesForProject:', error); return [] }
+  return (data || []).map(a => ({
+    id:      a.id,
+    name:    a.arabic_name,
+    type:    a.account_type,
+  }))
 }
 
 // -------------------------------------------------------------------
@@ -421,7 +513,7 @@ export async function getOwnerReceivables(projectId?: string) {
 }
 
 // -------------------------------------------------------------------
-// BILLABLE ITEMS (SOURCE DOCUMENTS)
+// BILLABLE ITEMS (SOURCE DOCUMENTS) — unchanged
 // -------------------------------------------------------------------
 
 export async function getBillableSubcontractorItems(projectId: string) {
@@ -449,6 +541,7 @@ export async function getBillableSubcontractorItems(projectId: string) {
     
   if (error) throw error
   
+  // Keep latest line per work item
   const latestByWorkItem = new Map()
   data.forEach((line) => {
     if (!latestByWorkItem.has(line.project_work_item_id)) {
@@ -487,7 +580,6 @@ export async function getBillableStoreIssues(projectId: string) {
     const existing = grouped.get(line.item_id)
     if (existing) {
       existing.quantity = Number(existing.quantity) + Number(line.quantity)
-      // Unit cost could be averaged, but we'll deal with it when rendering or let the user decide pricing
     } else {
       grouped.set(line.item_id, { ...line, quantity: Number(line.quantity) })
     }
@@ -498,8 +590,12 @@ export async function getBillableStoreIssues(projectId: string) {
 
 export async function getBillableMaterialsOnSite(projectId: string) {
   const supabase = createAdminClient()
-  // Fetch warehouse ID for project
-  const { data: wData } = await supabase.from('warehouses').select('id').eq('project_id', projectId).eq('is_active', true).maybeSingle()
+  const { data: wData } = await supabase
+    .from('warehouses')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('is_active', true)
+    .maybeSingle()
   if (!wData) return []
 
   const { data, error } = await supabase
@@ -527,7 +623,7 @@ export async function getPreviousBilledQuantities(projectId: string) {
     .select(`
       line_description,
       override_description,
-      quantity,
+      cumulative_quantity,
       owner_billing_documents!inner (
         project_id,
         status
@@ -538,14 +634,15 @@ export async function getPreviousBilledQuantities(projectId: string) {
     
   if (error) throw error
   
-  const grouped = new Map()
+  // For each description, track the HIGHEST cumulative_quantity (last approved value)
+  const maxByDesc = new Map<string, number>()
   data.forEach((line) => {
-    // Group by line_description (or override_description if present so tracking matches user's exact wording)
     const key = line.override_description?.trim() || line.line_description?.trim()
     if (key) {
-      grouped.set(key, (grouped.get(key) || 0) + Number(line.quantity))
+      const current = maxByDesc.get(key) || 0
+      maxByDesc.set(key, Math.max(current, Number(line.cumulative_quantity || 0)))
     }
   })
   
-  return Object.fromEntries(grouped)
+  return Object.fromEntries(maxByDesc)
 }

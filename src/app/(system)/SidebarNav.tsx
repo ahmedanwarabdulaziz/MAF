@@ -2,6 +2,20 @@
 
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { getDiscrepancyInvoices } from '@/actions/procurement'
+
+function DiscrepancyBadge({ projectId }: { projectId: string }) {
+  const [count, setCount] = useState(0)
+  useEffect(() => {
+    if (projectId) {
+      getDiscrepancyInvoices(projectId).then(data => setCount(data?.length || 0)).catch(() => {})
+    }
+  }, [projectId])
+
+  if (count === 0) return null
+  return <span className="mr-auto mr-1 bg-danger text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none">{count}</span>
+}
 
 type Props = {
   isSuperAdmin: boolean
@@ -102,6 +116,10 @@ export default function SidebarNav({ isSuperAdmin, allowedModules, companyName }
             <Link href={`/projects/${projectId}/procurement/invoices`} className={`${linkBase} ${isActive(`/projects/${projectId}/procurement/invoices`) ? linkActive : linkInactive}`}>
               فواتير الموردين
             </Link>
+            <Link href={`/projects/${projectId}/procurement/discrepancies`} className={`${linkBase} ${isActive(`/projects/${projectId}/procurement/discrepancies`) ? linkActive : linkInactive} flex items-center justify-between`}>
+              <span>فروق الاستلامات</span>
+              <DiscrepancyBadge projectId={projectId} />
+            </Link>
             <Link href={`/projects/${projectId}/procurement/statements`} className={`${linkBase} ${isActive(`/projects/${projectId}/procurement/statements`) ? linkActive : linkInactive}`}>
               حسابات الموردين
             </Link>
@@ -159,14 +177,26 @@ export default function SidebarNav({ isSuperAdmin, allowedModules, companyName }
       )}
 
       {can('projects') && (
-        <Link href="/company/projects" className={`${linkBase} ${isActive('/company/projects') ? linkActive : linkInactive}`}>
-          المشروعات
-        </Link>
+        <>
+          <Link href="/company/projects" className={`${linkBase} ${isActive('/company/projects') ? linkActive : linkInactive}`}>
+            المشروعات
+          </Link>
+          <Link href="/company/critical-actions" className={`${linkBase} flex items-center justify-between ${isActive('/company/critical-actions') ? linkActive : linkInactive}`}>
+            <span>الاعتمادات والملاحظات الهامة</span>
+            <span className="bg-amber-500/20 text-amber-500 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center justify-center">⚡</span>
+          </Link>
+        </>
       )}
 
       {can('treasury') && (
         <Link href="/company/treasury" className={`${linkBase} ${isActive('/company/treasury') && !isActive('/company/treasury/expense-categories') ? linkActive : linkInactive}`}>
           الخزينة والحسابات
+        </Link>
+      )}
+
+      {can('corporate_expenses') && (
+        <Link href="/company/purchases/suppliers" className={`${linkBase} ${isActive('/company/purchases/suppliers') ? linkActive : linkInactive}`}>
+          حسابات الموردين
         </Link>
       )}
 
@@ -178,9 +208,6 @@ export default function SidebarNav({ isSuperAdmin, allowedModules, companyName }
           </Link>
           <Link href="/company/purchases/approved-prs" className={`${linkBase} ${isActive('/company/purchases/approved-prs') ? linkActive : linkInactive}`}>
             طلبات الشراء المعتمدة
-          </Link>
-          <Link href="/company/purchases/suppliers" className={`${linkBase} ${isActive('/company/purchases/suppliers') ? linkActive : linkInactive}`}>
-            حسابات الموردين
           </Link>
         </>
       )}

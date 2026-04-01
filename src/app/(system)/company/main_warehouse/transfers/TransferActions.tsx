@@ -65,7 +65,7 @@ export function TransferActions({ transfer }: { transfer: any }) {
           <ActionIconButton
             onClick={() => promptAction('dispatch')}
             loading={isPending}
-            title="صرف الشحنة"
+            title="اعتماد الإذن كمعلق"
             bgClass="hover:bg-orange-100"
             textClass="text-orange-600"
             icon={
@@ -118,10 +118,10 @@ export function TransferActions({ transfer }: { transfer: any }) {
                   تفاصيل إذن التحويل
                   <span className={`text-xs px-2.5 py-0.5 rounded-full border bg-white/10 ${
                     transfer.status === 'confirmed' ? 'text-green-300 border-green-400/30' : 
-                    transfer.status === 'dispatched' ? 'text-blue-300 border-blue-400/30' : 
+                    transfer.status === 'dispatched' ? 'text-warning border-warning/30' : 
                     transfer.status === 'draft' ? 'text-orange-300 border-orange-400/30' : 'text-gray-300 border-gray-400/30'
                   }`}>
-                    {transfer.status === 'confirmed' ? 'تم الاستلام' : transfer.status === 'dispatched' ? 'جاري النقل' : transfer.status === 'draft' ? 'مسودة' : 'ملغي'}
+                    {transfer.status === 'confirmed' ? 'تم الاستلام' : transfer.status === 'dispatched' ? 'معلق (بانتظار الاستلام)' : transfer.status === 'draft' ? 'مسودة' : 'ملغي'}
                   </span>
                 </h2>
                 <p className="text-sm text-white/75 mt-0.5" dir="ltr">{transfer.document_no}</p>
@@ -211,7 +211,7 @@ export function TransferActions({ transfer }: { transfer: any }) {
                     disabled={isPending}
                     className="px-6 py-2 bg-orange-500 text-white rounded-lg text-sm font-bold shadow-md hover:bg-orange-600 hover:shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
                   >
-                    {isPending ? 'جاري الصرف...' : 'صرف الشحنة (إصدار)'}
+                    {isPending ? 'جاري الاعتماد...' : 'اعتماد الإذن (تعليق)'}
                   </button>
                 )}
                 {transfer.status === 'dispatched' && (
@@ -248,12 +248,12 @@ export function TransferActions({ transfer }: { transfer: any }) {
               </svg>
             </div>
             <h3 className="text-lg font-bold text-gray-900 mb-2">
-              {confirmAction === 'dispatch' ? 'تأكيد صرف الشحنة' : 'تأكيد الاستلام بالمخزن'}
+              {confirmAction === 'dispatch' ? 'تأكيد اعتماد الإذن (معلق)' : 'تأكيد الاستلام بالمخزن'}
             </h3>
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-gray-500 mb-6 w-full px-2 leading-relaxed">
               {confirmAction === 'dispatch' 
-                ? 'هل أنت متأكد من صرف الأصناف؟ سيتم خصم الرصيد من المخزن المرسل وتصبح الشحنة في الطريق.'
-                : 'هل أنت متأكد من استلام الشحنة كاملة وسليمة؟ سيتم إضافة الأرصدة للمخزن المستلم بشكل نهائي ولا يمكن التراجع.'}
+                ? 'هل أنت متأكد من اعتماد إذن التحويل؟ سيصبح الإذن معلقاً بانتظار الاستلام، ولن يتم خصم الرصيد من المخزن الآن إلا بعد استلام الطرف الآخر له.'
+                : 'هل أنت متأكد من استلام الشحنة؟ سيتم تحديث الجرد وخصم الكمية من المخزن المُرسِل وإضافتها في المخزن الخاص بك بشكل نهائي.'}
             </p>
             <div className="flex items-center justify-center gap-3">
               <button
@@ -276,7 +276,7 @@ export function TransferActions({ transfer }: { transfer: any }) {
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                 )}
-                {isPending ? 'جاري التنفيذ...' : (confirmAction === 'dispatch' ? 'نعم، صرف من الرصيد' : 'نعم، استلام في المخزن')}
+                {isPending ? 'جاري التنفيذ...' : (confirmAction === 'dispatch' ? 'نعم، تعليق الإذن' : 'نعم، استلام وخصم الرصيد')}
               </button>
             </div>
           </div>

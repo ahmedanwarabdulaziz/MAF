@@ -26,7 +26,7 @@ export async function getProjects(filters?: {
     .from('projects')
     .select(`
       id, project_code, arabic_name, english_name, status,
-      project_onboarding_type, location, start_date, expected_end_date,
+      project_onboarding_type, owner_party_id, location, start_date, expected_end_date,
       planned_allocation_amount, estimated_contract_value, migration_status,
       created_at, cost_centers(arabic_name)
     `)

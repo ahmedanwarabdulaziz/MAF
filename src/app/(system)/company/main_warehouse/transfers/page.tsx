@@ -95,13 +95,13 @@ export default async function TransfersPage() {
                         t.status === 'confirmed'
                           ? 'bg-success/10 text-success'
                           : t.status === 'dispatched'
-                          ? 'bg-info/10 text-info'
+                          ? 'bg-warning/10 text-warning border-warning/20 border'
                           : t.status === 'draft'
                           ? 'bg-secondary/10 text-secondary'
                           : 'bg-danger/10 text-danger'
                       }`}
                     >
-                      {t.status === 'confirmed' ? 'مستلمة' : t.status === 'dispatched' ? 'في الطريق' : t.status === 'draft' ? 'مسودة' : 'ملغية'}
+                      {t.status === 'confirmed' ? 'مستلمة' : t.status === 'dispatched' ? 'معلق (بانتظار الاستلام)' : t.status === 'draft' ? 'مسودة' : 'ملغية'}
                     </span>
                   </td>
                   <td className="px-6 py-4">

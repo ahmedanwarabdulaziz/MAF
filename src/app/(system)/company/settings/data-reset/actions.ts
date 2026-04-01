@@ -6,11 +6,10 @@ import { revalidatePath } from 'next/cache'
 // Super admin guard
 async function assertSuperAdmin() {
   const userClient = createClient()
-  const { data: { session } } = await userClient.auth.getSession()
-  const user = session?.user
+  const { data: { user } } = await userClient.auth.getUser()
   if (!user) throw new Error('غير مصرح')
   
-  const { data: profile, error } = await userClient.from('users').select('is_super_admin').eq('id', user.id).single()
+  const { data: profile } = await userClient.from('users').select('is_super_admin').eq('id', user.id).single()
   if (!profile?.is_super_admin) throw new Error('هذه العملية محظورة — للمديرين العامين فقط')
 
   const { createAdminClient } = await import('@/lib/supabase-admin')
@@ -52,6 +51,13 @@ export async function deleteSubcontractAgreements() {
 
 export async function deleteSupplierInvoices() {
   const supabase = await assertSuperAdmin()
+  // Delete return invoices first (FK: supplier_return_invoices.original_invoice_id → supplier_invoices)
+  await supabase.from('supplier_return_invoice_lines').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
+  await supabase.from('supplier_return_invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
+  // Delete receipt confirmations (FK: invoice_receipt_confirmations.supplier_invoice_id → supplier_invoices)
+  await supabase.from('invoice_receipt_confirmation_users').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
+  await supabase.from('invoice_receipt_confirmations').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
+  // Now safe to delete payment allocations, lines, and invoices
   await supabase.from('payment_allocations').delete().eq('source_entity_type', 'supplier_invoice').throwOnError()
   await supabase.from('supplier_invoice_lines').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
   await supabase.from('supplier_invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
@@ -102,7 +108,6 @@ export async function deleteStockLedger() {
 export async function deletePettyExpenses() {
   const supabase = await assertSuperAdmin()
   await supabase.from('petty_expenses').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
-  await supabase.from('employee_custody_accounts').delete().neq('id', '00000000-0000-0000-0000-000000000000').throwOnError()
   revalidatePath('/projects')
 }
 
@@ -233,6 +238,361 @@ export async function getResetObjectCounts(): Promise<Record<string, number>> {
     counts[k.key] = results[i]
   })
   counts['users'] = results[results.length - 1]
+
+  return counts
+}
+
+// ── Document Number Management ──────────────────────────────────────
+
+export type DocType =
+  | 'supplier_invoices'
+  | 'purchase_requests'
+  | 'payment_vouchers'
+  | 'company_purchase_invoices'
+  | 'subcontractor_certificates'
+  | 'owner_billing'
+
+export type DocumentRow = {
+  id: string
+  doc_no: string
+  doc_date: string
+  status: string
+  party_name: string | null
+  project_name: string | null
+}
+
+const DOC_TYPE_CONFIG: Record<DocType, {
+  table: string
+  numberCol: string
+  dateCol: string
+  select: string
+  projectCol: string | null
+  hasProject: boolean
+}> = {
+  supplier_invoices: {
+    table: 'supplier_invoices',
+    numberCol: 'invoice_no',
+    dateCol: 'invoice_date',
+    select: 'id, invoice_no, invoice_date, status, parties(arabic_name), projects(arabic_name)',
+    projectCol: 'project_id',
+    hasProject: true,
+  },
+  purchase_requests: {
+    table: 'purchase_requests',
+    numberCol: 'request_no',
+    dateCol: 'request_date',
+    select: 'id, request_no, request_date, status, projects(arabic_name)',
+    projectCol: 'project_id',
+    hasProject: true,
+  },
+  payment_vouchers: {
+    table: 'payment_vouchers',
+    numberCol: 'voucher_no',
+    dateCol: 'payment_date',
+    select: 'id, voucher_no, payment_date, status, projects(arabic_name)',
+    projectCol: 'project_id',
+    hasProject: true,
+  },
+  company_purchase_invoices: {
+    table: 'company_purchase_invoices',
+    numberCol: 'invoice_no',
+    dateCol: 'invoice_date',
+    select: 'id, invoice_no, invoice_date, status, parties(arabic_name)',
+    projectCol: null,
+    hasProject: false,
+  },
+  subcontractor_certificates: {
+    table: 'subcontractor_certificates',
+    numberCol: 'certificate_no',
+    dateCol: 'certificate_date',
+    select: 'id, certificate_no, certificate_date, status, parties(arabic_name), projects(arabic_name)',
+    projectCol: 'project_id',
+    hasProject: true,
+  },
+  owner_billing: {
+    table: 'owner_billing_documents',
+    numberCol: 'document_no',
+    dateCol: 'billing_date',
+    select: 'id, document_no, billing_date, status, parties(arabic_name), projects(arabic_name)',
+    projectCol: 'project_id',
+    hasProject: true,
+  },
+}
+
+export async function getDocumentsByType(
+  docType: DocType,
+  projectId?: string
+): Promise<DocumentRow[]> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+
+  let query = admin.from(cfg.table).select(cfg.select).order(cfg.dateCol, { ascending: true })
+  if (projectId && cfg.hasProject && cfg.projectCol) {
+    query = query.eq(cfg.projectCol, projectId)
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    doc_no: row[cfg.numberCol] || '',
+    doc_date: row[cfg.dateCol] || '',
+    status: row.status || '',
+    party_name: row.parties?.arabic_name || null,
+    project_name: row.projects?.arabic_name || null,
+  }))
+}
+
+export async function updateDocumentNumber(
+  docType: DocType,
+  id: string,
+  newNumber: string
+): Promise<void> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+  if (!newNumber.trim()) throw new Error('الرقم لا يمكن أن يكون فارغاً')
+
+  const { error } = await admin
+    .from(cfg.table)
+    .update({ [cfg.numberCol]: newNumber.trim() })
+    .eq('id', id)
+  
+  if (error) throw new Error(error.message)
+  revalidatePath('/company/settings/data-reset')
+}
+
+export async function deleteDocumentById(
+  docType: DocType,
+  id: string
+): Promise<void> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+
+  // Delete child lines first for document types that have them
+  const childLineMap: Partial<Record<DocType, string>> = {
+    supplier_invoices: 'supplier_invoice_lines',
+    purchase_requests: 'purchase_request_lines',
+    subcontractor_certificates: 'subcontractor_certificate_lines',
+    owner_billing: 'owner_billing_lines',
+  }
+  const childTable = childLineMap[docType]
+  if (childTable) {
+    const childFkMap: Partial<Record<DocType, string>> = {
+      supplier_invoices: 'invoice_id',
+      purchase_requests: 'pr_id',
+      subcontractor_certificates: 'certificate_id',
+      owner_billing: 'owner_billing_document_id',
+    }
+    const fk = childFkMap[docType]!
+    await admin.from(childTable).delete().eq(fk, id).throwOnError()
+  }
+
+  const { error } = await admin.from(cfg.table).delete().eq('id', id)
+  if (error) throw new Error(error.message)
+  revalidatePath('/company/settings/data-reset')
+}
+
+export async function bulkUpdateDocumentNumbers(
+  docType: DocType,
+  updates: { id: string; newNumber: string }[]
+): Promise<{ updated: number; errors: string[] }> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+  
+  let updated = 0
+  const errors: string[] = []
+
+  for (const upd of updates) {
+    if (!upd.newNumber.trim()) {
+      errors.push(`ID ${upd.id}: الرقم فارغ`)
+      continue
+    }
+    const { error } = await admin
+      .from(cfg.table)
+      .update({ [cfg.numberCol]: upd.newNumber.trim() })
+      .eq('id', upd.id)
+    
+    if (error) {
+      errors.push(`${upd.newNumber}: ${error.message}`)
+    } else {
+      updated++
+    }
+  }
+
+  revalidatePath('/company/settings/data-reset')
+  return { updated, errors }
+}
+
+// ── Re-sequencing ──────────────────────────────────────────────────
+
+export async function resequenceDocuments(
+  docType: DocType,
+  prefix: string,
+  startFrom: number,
+  projectId?: string
+): Promise<{ updated: number; preview: { id: string; oldNo: string; newNo: string }[] }> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+
+  let query = admin.from(cfg.table).select(`id, ${cfg.numberCol}, ${cfg.dateCol}`).order(cfg.dateCol, { ascending: true })
+  if (projectId && cfg.hasProject && cfg.projectCol) {
+    query = query.eq(cfg.projectCol, projectId)
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  const rows = data || []
+  const preview: { id: string; oldNo: string; newNo: string }[] = []
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i] as any
+    const newNo = `${prefix}${String(startFrom + i).padStart(4, '0')}`
+    preview.push({ id: row.id, oldNo: row[cfg.numberCol], newNo })
+  }
+
+  // Apply updates
+  let updated = 0
+  for (const p of preview) {
+    const { error: updErr } = await admin
+      .from(cfg.table)
+      .update({ [cfg.numberCol]: p.newNo })
+      .eq('id', p.id)
+    if (!updErr) updated++
+  }
+
+  revalidatePath('/company/settings/data-reset')
+  return { updated, preview }
+}
+
+export async function previewResequence(
+  docType: DocType,
+  prefix: string,
+  startFrom: number,
+  projectId?: string
+): Promise<{ id: string; oldNo: string; newNo: string }[]> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+
+  let query = admin.from(cfg.table).select(`id, ${cfg.numberCol}, ${cfg.dateCol}`).order(cfg.dateCol, { ascending: true })
+  if (projectId && cfg.hasProject && cfg.projectCol) {
+    query = query.eq(cfg.projectCol, projectId)
+  }
+
+  const { data, error } = await query
+  if (error) throw new Error(error.message)
+
+  return (data || []).map((row: any, i: number) => ({
+    id: row.id,
+    oldNo: row[cfg.numberCol] || '',
+    newNo: `${prefix}${String(startFrom + i).padStart(4, '0')}`,
+  }))
+}
+
+// ── Quick Clean ────────────────────────────────────────────────────
+
+export async function deleteDraftDocuments(docType: DocType): Promise<{ deleted: number }> {
+  const admin = await assertSuperAdmin()
+  const cfg = DOC_TYPE_CONFIG[docType]
+
+  const { count, error } = await admin
+    .from(cfg.table)
+    .delete({ count: 'exact' })
+    .eq('status', 'draft')
+  
+  if (error) throw new Error(error.message)
+  revalidatePath('/company/settings/data-reset')
+  return { deleted: count || 0 }
+}
+
+export async function deleteOldAuditLogs(olderThanDays: number): Promise<{ deleted: number }> {
+  const admin = await assertSuperAdmin()
+  const cutoffDate = new Date()
+  cutoffDate.setDate(cutoffDate.getDate() - olderThanDays)
+
+  const { count, error } = await admin
+    .from('audit_logs')
+    .delete({ count: 'exact' })
+    .lt('created_at', cutoffDate.toISOString())
+  
+  if (error) throw new Error(error.message)
+  revalidatePath('/company/settings/audit-log')
+  return { deleted: count || 0 }
+}
+
+// ── Projects list (for scope filter) ───────────────────────────────
+
+export async function getProjectsList(): Promise<{ id: string; arabic_name: string }[]> {
+  const admin = await assertSuperAdmin()
+  const { data, error } = await admin
+    .from('projects')
+    .select('id, arabic_name')
+    .order('arabic_name')
+  
+  if (error) throw new Error(error.message)
+  return data || []
+}
+
+// ── CSV Export ─────────────────────────────────────────────────────
+
+export async function exportDocumentsCSV(
+  docType: DocType,
+  projectId?: string
+): Promise<string> {
+  const rows = await getDocumentsByType(docType, projectId)
+  
+  const headers = ['الرقم', 'التاريخ', 'الحالة', 'الجهة', 'المشروع']
+  const lines = [
+    headers.join(','),
+    ...rows.map(r => [
+      `"${r.doc_no}"`,
+      `"${r.doc_date}"`,
+      `"${r.status}"`,
+      `"${r.party_name || ''}"`,
+      `"${r.project_name || ''}"`,
+    ].join(','))
+  ]
+  
+  return lines.join('\n')
+}
+
+// ── DB Stats ────────────────────────────────────────────────────────
+
+export type DbStatRow = { label: string; table: string; count: number }
+
+export async function getDbStats(): Promise<DbStatRow[]> {
+  const admin = await assertSuperAdmin()
+
+  const tables = [
+    { label: 'المشاريع', table: 'projects' },
+    { label: 'فواتير الموردين', table: 'supplier_invoices' },
+    { label: 'طلبات الشراء', table: 'purchase_requests' },
+    { label: 'سندات الصرف', table: 'payment_vouchers' },
+    { label: 'مشتريات الشركة', table: 'company_purchase_invoices' },
+    { label: 'مستخلصات مقاولو الباطن', table: 'subcontractor_certificates' },
+    { label: 'عقود مقاولو الباطن', table: 'subcontract_agreements' },
+    { label: 'فواتير المالك', table: 'owner_billing_documents' },
+    { label: 'بنود الأعمال', table: 'project_work_items' },
+    { label: 'أذون الصرف', table: 'store_issues' },
+    { label: 'حركات المخزن', table: 'stock_ledger' },
+    { label: 'أرصدة المخزن', table: 'stock_balances' },
+    { label: 'المصروفات النثرية', table: 'petty_expenses' },
+    { label: 'الحسابات المالية', table: 'financial_accounts' },
+    { label: 'الحركات المالية', table: 'financial_transactions' },
+    { label: 'جهات التعامل', table: 'parties' },
+    { label: 'المستخدمون', table: 'users' },
+    { label: 'سجل النشاط', table: 'audit_logs' },
+    { label: 'المخازن', table: 'warehouses' },
+    { label: 'الأصناف', table: 'items' },
+  ]
+
+  const counts = await Promise.all(
+    tables.map(async t => {
+      const { count } = await admin.from(t.table).select('id', { count: 'exact', head: true })
+      return { ...t, count: count || 0 }
+    })
+  )
 
   return counts
 }

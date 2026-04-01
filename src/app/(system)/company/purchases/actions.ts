@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase-server'
+import { createAdminClient } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { writeAuditLog } from '@/lib/audit'
 
@@ -824,33 +825,52 @@ export async function getGlobalSupplierBalances() {
   const supabase = await createClient()
   
   const [companyRes, projectsRes, pRes] = await Promise.all([
-    supabase.from('company_supplier_balances_view').select('*'),
+    supabase.from('company_purchase_invoices').select(`
+      supplier_party_id,
+      gross_amount,
+      tax_amount,
+      discount_amount,
+      net_amount,
+      paid_to_date,
+      outstanding_amount,
+      supplier:parties!supplier_party_id(id, arabic_name)
+    `).in('status', ['posted', 'partially_paid', 'paid']),
     supabase.from('supplier_account_summaries_view').select('*'),
     supabase.from('projects').select('id, arabic_name')
   ])
 
   if (companyRes.error) throw new Error(companyRes.error.message)
   if (projectsRes.error) throw new Error(projectsRes.error.message)
+  console.log("=== DEBUG SUPPLIER BALANCES ===");
+  console.log("Company invoices aggregated:", companyRes.data?.length);
+  console.log("Projects invoices aggregated:", projectsRes.data?.length);
 
   const pMap: Record<string, string> = {}
   pRes.data?.forEach(p => pMap[p.id] = p.arabic_name)
 
   const rawScopes: any[] = []
 
-  // 1. Process Company Invoices
-  companyRes.data.forEach(row => {
-    rawScopes.push({
-      supplier_party_id: row.supplier_party_id,
-      supplier_name: row.supplier_name,
-      scope: 'الشركة الرئيسية',
-      total_gross: Number(row.total_gross || 0),
-      total_tax: Number(row.total_tax || 0),
-      total_discount: Number(row.total_discount || 0),
-      total_net: Number(row.total_net || 0),
-      total_paid: Number(row.total_paid || 0),
-      total_outstanding: Number(row.total_outstanding || 0),
-    })
+  // 1. Process Company Invoices (Manual Grouping)
+  const compMap: Record<string, any> = {}
+  companyRes.data?.forEach(row => {
+    const sId = row.supplier_party_id
+    if (!compMap[sId]) {
+      compMap[sId] = {
+        supplier_party_id: sId,
+        supplier_name: (row.supplier as any)?.arabic_name || 'غير معروف',
+        scope: 'الشركة الرئيسية',
+        total_gross: 0, total_tax: 0, total_discount: 0, total_net: 0, total_paid: 0, total_outstanding: 0, advance_balance: 0, total_return: 0
+      }
+    }
+    compMap[sId].total_gross += Number(row.gross_amount || 0)
+    compMap[sId].total_tax += Number(row.tax_amount || 0)
+    compMap[sId].total_discount += Number(row.discount_amount || 0)
+    compMap[sId].total_net += Number(row.net_amount || 0)
+    compMap[sId].total_paid += Number(row.paid_to_date || 0)
+    compMap[sId].total_outstanding += Number(row.outstanding_amount || 0)
   })
+
+  Object.values(compMap).forEach(val => rawScopes.push(val))
 
   // 2. Process Project Invoices
   projectsRes.data.forEach(row => {
@@ -865,6 +885,8 @@ export async function getGlobalSupplierBalances() {
       total_net: Number(row.total_invoiced_net || 0),
       total_paid: Number(row.total_paid || 0),
       total_outstanding: Number(row.total_outstanding || 0),
+      advance_balance: 0,
+      total_return: Number(row.total_returned_net || 0),
     })
   })
 
@@ -873,6 +895,7 @@ export async function getGlobalSupplierBalances() {
     .from('subcontractor_certificates')
     .select(`
       project_id,
+      subcontract_agreement_id,
       subcontractor_party_id,
       gross_amount,
       taaliya_amount,
@@ -883,6 +906,7 @@ export async function getGlobalSupplierBalances() {
       subcontractor:subcontractor_party_id(arabic_name)
     `)
     .in('status', ['approved', 'paid_in_full'])
+    .order('created_at', { ascending: false })
 
   const { data: voucherParties } = await supabase
     .from('payment_voucher_parties')
@@ -905,8 +929,18 @@ export async function getGlobalSupplierBalances() {
   }
 
   const subAggregated = new Map<string, any>()
+  const latestCertsByAgreement = new Map<string, any>()
+  
   if (certs) {
     for (const c of certs) {
+      if (!latestCertsByAgreement.has(c.subcontract_agreement_id)) {
+        latestCertsByAgreement.set(c.subcontract_agreement_id, c)
+      }
+    }
+  }
+
+  if (latestCertsByAgreement.size > 0) {
+    for (const c of latestCertsByAgreement.values()) {
       const pId = c.subcontractor_party_id
       const projId = c.project_id
       const key = `${projId}_${pId}`
@@ -923,7 +957,9 @@ export async function getGlobalSupplierBalances() {
           total_discount: 0,
           total_net: 0,
           total_paid: 0,
+          total_return: 0,
           total_outstanding: 0,
+          advance_balance: 0,
         })
       }
       
@@ -947,5 +983,56 @@ export async function getGlobalSupplierBalances() {
     rawScopes.push(row)
   }
 
+  // 4. Process Advance Payments (so parties with only advances show up)
+  const adminSupabase = createAdminClient()
+  const { data: advanceBals, error: adErr } = await adminSupabase
+    .from('party_advance_balances')
+    .select('project_id, party_id, party_type, balance_remaining, party:party_id(arabic_name)')
+    .gt('balance_remaining', 0)
+
+  if (adErr) {
+    throw new Error('Advance query error: ' + adErr.message)
+  }
+
+  if (advanceBals) {
+    for (const adv of advanceBals) {
+      const pName = adv.project_id ? (pMap[adv.project_id] || 'مشروع غير معروف') : 'الشركة الرئيسية'
+      const partyObj: any = Array.isArray(adv.party) ? adv.party[0] : adv.party
+      const keyScope = adv.party_type === 'contractor' ? `${pName} (مقاولي الباطن)` : pName
+
+      rawScopes.push({
+        supplier_party_id: adv.party_id,
+        supplier_name: partyObj?.arabic_name || 'غير معروف',
+        scope: keyScope,
+        total_gross: 0,
+        total_tax: 0,
+        total_discount: 0,
+        total_net: 0,
+        total_paid: 0,
+        total_return: 0,
+        total_outstanding: 0,
+        advance_balance: Number(adv.balance_remaining),
+      })
+    }
+  }
+
   return rawScopes
+}
+
+// ─── Vendor Advance Balances ───────────────────────────────────────────────────
+
+export async function getVendorAdvanceBalances(partyId: string) {
+  const adminSupabase = createAdminClient()
+  const { data, error } = await adminSupabase
+    .from('party_advance_balances')
+    .select('*, project:project_id(arabic_name)')
+    .eq('party_id', partyId)
+    .gt('balance_remaining', 0)
+    .order('updated_at', { ascending: false })
+  
+  if (error) {
+    console.error('getVendorAdvanceBalances error:', error)
+    return []
+  }
+  return data || []
 }

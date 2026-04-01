@@ -84,9 +84,11 @@ export default function NewProjectModal({ isOpen, onClose }: Props) {
         planned_allocation_amount: form.planned_allocation_amount ? Number(form.planned_allocation_amount) : null,
       })
       
-      onClose()
-      router.push(`/company/projects/${data.id}`)
       router.refresh()
+      onClose()
+      window.setTimeout(() => {
+        window.location.reload()
+      }, 100)
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء الحفظ')
       setLoading(false)
@@ -179,7 +181,7 @@ export default function NewProjectModal({ isOpen, onClose }: Props) {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-text-primary">الجهة المالكة (قائمة الملاك)</label>
+                <label className="text-sm font-medium text-text-primary">الجهة المالكة</label>
                 <select
                   value={form.owner_party_id}
                   onChange={e => set('owner_party_id', e.target.value)}

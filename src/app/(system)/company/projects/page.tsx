@@ -2,6 +2,7 @@ import { getCompany, getProjects } from '@/lib/projects'
 import { requirePermission } from '@/lib/auth'
 import Link from 'next/link'
 import AddProjectButton from './AddProjectButton'
+import ProjectsGrid from './ProjectsGrid'
 
 const STATUS_LABELS: Record<string, string> = {
   planning:  'تخطيط',
@@ -49,45 +50,7 @@ export default async function ProjectsPage() {
 
       {/* Projects grid */}
       {projects.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project: any) => (
-            <Link
-              key={project.id}
-              href={`/company/projects/${project.id}`}
-              className="group block overflow-hidden rounded-xl border border-border bg-white shadow-sm hover:shadow-md hover:border-primary/30 transition-all"
-            >
-              <div className="px-5 py-4">
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-text-primary group-hover:text-primary transition-colors truncate flex items-center gap-2">
-                      <span>{project.arabic_name}</span>
-                      <span className="text-[10.5px] text-text-secondary font-medium tracking-wider bg-background px-1.5 py-0.5 rounded border border-border/50 shrink-0" dir="ltr">
-                        {project.project_code}
-                      </span>
-                    </div>
-                  </div>
-                  <span className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[project.status] ?? 'bg-border text-text-secondary'}`}>
-                    {STATUS_LABELS[project.status] ?? project.status}
-                  </span>
-                </div>
-
-
-              </div>
-
-              {/* Financial summary strip */}
-              {project.planned_allocation_amount != null && (
-                <div className="border-t border-border/50 bg-background-secondary px-5 py-3 flex gap-4">
-                  <div>
-                    <div className="text-xs text-text-secondary">التخصيص المخطط</div>
-                    <div className="text-sm font-semibold text-text-primary">
-                      {Number(project.planned_allocation_amount).toLocaleString('en-US')} ج.م
-                    </div>
-                  </div>
-                </div>
-              )}
-            </Link>
-          ))}
-        </div>
+        <ProjectsGrid projects={projects} />
       )}
     </div>
   )

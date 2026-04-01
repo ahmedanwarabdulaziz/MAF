@@ -57,10 +57,10 @@ export default async function CertificatesPage({ params }: { params: { id: strin
                       <td className="px-4 py-4 text-text-primary font-medium">{subc?.arabic_name || 'غير معروف'}</td>
                       <td className="px-4 py-4 text-text-secondary">{aggr?.agreement_code || '---'}</td>
                       <td className="px-4 py-4 font-semibold text-navy dir-ltr text-right">
-                        {Number(cert.gross_amount).toLocaleString()} ج.م
+                        {Number(cert.gross_amount).toLocaleString('en-US')} ج.م
                       </td>
                       <td className="px-4 py-4 font-bold text-success dir-ltr text-right">
-                        {Number(cert.net_amount).toLocaleString()} ج.م
+                        {Number(cert.net_amount).toLocaleString('en-US')} ج.م
                       </td>
                       <td className="px-4 py-4">
                         <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${

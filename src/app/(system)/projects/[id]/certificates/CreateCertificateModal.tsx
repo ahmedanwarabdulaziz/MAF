@@ -2,7 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createDraftCertificate, getNextCertificateCode, getSubcontractorCertificateStatus } from '@/actions/certificates'
+import {
+  createDraftCertificate,
+  getNextCertificateCode,
+  getSubcontractorCertificateStatus,
+} from '@/actions/certificates'
 import DatePicker from '@/components/DatePicker'
 
 interface CreateCertificateModalProps {
@@ -12,35 +16,37 @@ interface CreateCertificateModalProps {
 
 export default function CreateCertificateModal({ projectId, agreements }: CreateCertificateModalProps) {
   const router = useRouter()
-  const [isOpen, setIsOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [isOpen, setIsOpen]   = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     subcontract_agreement_id: '',
-    certificate_no: '',
-    certificate_date: new Date().toISOString().split('T')[0],
-    period_from: '',
-    period_to: '',
-    notes: ''
+    certificate_no:           '',
+    certificate_date:         new Date().toISOString().split('T')[0],
+    period_to:                '',
+    notes:                    '',
   })
-  const [lastEndDate, setLastEndDate] = useState<string | null>(null)
-  const [hasPending, setHasPending] = useState(false)
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
+
+  const [hasPending,      setHasPending]      = useState(false)
+  const [pendingMessage,  setPendingMessage]  = useState<string | null>(null)
+  const [previousCertNo,  setPreviousCertNo]  = useState<string | null>(null)
+  const [agreementStart,  setAgreementStart]  = useState<string | null>(null)
 
   const openModal = () => {
     setFormData({
       subcontract_agreement_id: '',
-      certificate_no: '',
-      certificate_date: new Date().toISOString().split('T')[0],
-      period_from: '',
-      period_to: '',
-      notes: ''
+      certificate_no:           '',
+      certificate_date:         new Date().toISOString().split('T')[0],
+      period_to:                '',
+      notes:                    '',
     })
-    setLastEndDate(null)
     setHasPending(false)
     setPendingMessage(null)
+    setPreviousCertNo(null)
+    setAgreementStart(null)
     setError(null)
+    setSaving(false)  // ← always reset on open to prevent stuck state
     setIsOpen(true)
   }
 
@@ -50,7 +56,8 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
     async function loadConfig() {
       if (!formData.subcontract_agreement_id) {
         setFormData(prev => ({ ...prev, certificate_no: '' }))
-        setLastEndDate(null)
+        setPreviousCertNo(null)
+        setAgreementStart(null)
         return
       }
       try {
@@ -59,22 +66,23 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
 
         const selectedAgg = agreements.find(a => a.id === formData.subcontract_agreement_id)
         if (selectedAgg) {
-          const status = await getSubcontractorCertificateStatus(projectId, selectedAgg.subcontractor_party_id, selectedAgg.id)
-          setLastEndDate(status.lastEndDate)
+          // Set period_from info for display
+          setAgreementStart(selectedAgg.start_date || null)
+
+          // Check for pending/draft
+          const status = await getSubcontractorCertificateStatus(
+            projectId,
+            selectedAgg.subcontractor_party_id,
+            selectedAgg.id
+          )
           setHasPending(Boolean(status.hasPending))
-          
+
           if (status.hasPending) {
-            setPendingMessage(`عذراً، يوجد مستخلص ${status.pendingStatus === 'draft' ? 'كمسودة' : 'بانتظار الاعتماد'} لهذا المقاول (رقم ${status.pendingNo}). يجب اعتماده أو حذفه أولاً.`)
+            setPendingMessage(
+              `عذراً، يوجد مستخلص ${status.pendingStatus === 'draft' ? 'كمسودة' : 'بانتظار الاعتماد'} لهذا المقاول (رقم ${status.pendingNo}). يجب اعتماده أو حذفه أولاً.`
+            )
           } else {
             setPendingMessage(null)
-          }
-
-          if (status.lastEndDate) {
-             const nextDay = new Date(status.lastEndDate)
-             nextDay.setDate(nextDay.getDate() + 1)
-             setFormData(prev => ({ ...prev, period_from: nextDay.toISOString().split('T')[0] }))
-          } else {
-             setFormData(prev => ({ ...prev, period_from: '' }))
           }
         }
       } catch (err) {
@@ -87,18 +95,9 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
 
-    if (formData.period_from && formData.period_to) {
-      if (formData.period_from > formData.period_to) {
-        setError('تاريخ البداية يجب أن يكون قبل أو يساوي تاريخ النهاية.')
-        return
-      }
-    }
-
-    if (formData.period_from && lastEndDate) {
-      if (new Date(formData.period_from) <= new Date(lastEndDate)) {
-        setError(`تاريخ البداية يتداخل مع المستخلص السابق الذي ينتهي في ${lastEndDate}. يجب أن يبدأ بعده.`)
-        return
-      }
+    if (!formData.period_to) {
+      setError('تاريخ الإغلاق (period_to) إجباري.')
+      return
     }
 
     setSaving(true)
@@ -108,19 +107,19 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
       const selectedAgg = agreements.find(a => a.id === formData.subcontract_agreement_id)
       if (!selectedAgg) throw new Error('يرجى اختيار العقد')
 
-      const result = await createDraftCertificate({
-        project_id: projectId,
-        subcontractor_party_id: selectedAgg.subcontractor_party_id,
+      const newCert = await createDraftCertificate({
+        project_id:               projectId,
+        subcontractor_party_id:   selectedAgg.subcontractor_party_id,
         subcontract_agreement_id: formData.subcontract_agreement_id,
-        certificate_no: formData.certificate_no,
-        certificate_date: formData.certificate_date,
-        period_from: formData.period_from || undefined,
-        period_to: formData.period_to || undefined,
-        notes: formData.notes
+        certificate_no:           formData.certificate_no,
+        certificate_date:         formData.certificate_date,
+        period_to:                formData.period_to,
+        notes:                    formData.notes,
       })
-      
+
+      setSaving(false)  // ← reset before closing
       closeModal()
-      router.refresh()
+      router.push(`/projects/${projectId}/certificates?openCert=${newCert.id}`)
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء إنشاء المستخلص')
       setSaving(false)
@@ -138,15 +137,17 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
 
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-          <div 
+          <div
             className="w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl flex flex-col max-h-[90vh]"
             style={{ animation: 'selectDropdown 0.2s cubic-bezier(0.16,1,0.3,1) both' }}
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-border bg-background-secondary/50 px-5 py-4">
               <div>
-                <h3 className="text-lg font-bold text-text-primary">إنشاء مستخلص جديد (Draft)</h3>
-                <p className="text-xs text-text-secondary mt-0.5">حدّد العقد ورقم المستخلص والفترة الزمنية المشمولة.</p>
+                <h3 className="text-lg font-bold text-text-primary">إنشاء مستخلص تراكمي جديد</h3>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  البنود السابقة ستُضاف تلقائياً — أدخل الكميات الجديدة داخل المستخلص.
+                </p>
               </div>
               <button
                 type="button"
@@ -157,8 +158,8 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
               </button>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-white relative overflow-visible z-20">
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-5 bg-white relative z-20">
               <form id="createCertForm" onSubmit={handleSubmit} className="space-y-5">
                 {error && (
                   <div className="rounded-lg border border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
@@ -166,13 +167,16 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
                   </div>
                 )}
                 {pendingMessage && (
-                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 mt-2 font-medium">
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 font-medium">
                     {pendingMessage}
                   </div>
                 )}
 
+                {/* Agreement */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-primary">عقد مقاول الباطن المرجعي <span className="text-danger">*</span></label>
+                  <label className="text-sm font-medium text-text-primary">
+                    عقد مقاول الباطن المرجعي <span className="text-danger">*</span>
+                  </label>
                   <select
                     required
                     value={formData.subcontract_agreement_id}
@@ -186,26 +190,41 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
                       </option>
                     ))}
                   </select>
-                  <p className="text-xs text-text-tertiary">سيتم جلب فئات وأسعار هذا العقد تلقائياً داخل المستخلص.</p>
+                  {/* period_from info badge */}
+                  {formData.subcontract_agreement_id && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs bg-background-secondary border border-border rounded-md px-2 py-1 text-text-secondary">
+                        📅 تاريخ بداية العقد (period_from):{' '}
+                        <span className="font-medium text-text-primary">
+                          {agreementStart || 'غير محدد'}
+                        </span>
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Certificate No */}
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium text-text-primary">رقم المستخلص الدفتري <span className="text-danger">*</span></label>
+                    <label className="text-sm font-medium text-text-primary">
+                      رقم المستخلص <span className="text-danger">*</span>
+                    </label>
                     <input
                       type="text"
                       required
-                      value={formData.certificate_no}
-                      onChange={e => setFormData({ ...formData, certificate_no: e.target.value })}
-                      placeholder="سيتم توليده تلقائياً..."
-                      className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm font-bold text-navy tracking-widest outline-none focus:border-primary cursor-not-allowed"
-                      dir="ltr"
                       readOnly
+                      value={formData.certificate_no}
+                      placeholder="سيتم توليده تلقائياً..."
+                      className="rounded-lg border border-border bg-slate-50 px-3 py-2 text-sm font-bold text-navy tracking-widest outline-none cursor-not-allowed"
+                      dir="ltr"
                     />
                   </div>
 
+                  {/* Certificate Date */}
                   <div className="flex flex-col gap-1.5 z-30">
-                    <label className="text-sm font-medium text-text-primary">تاريخ الإصدار <span className="text-danger">*</span></label>
+                    <label className="text-sm font-medium text-text-primary">
+                      تاريخ الإصدار <span className="text-danger">*</span>
+                    </label>
                     <DatePicker
                       required
                       value={formData.certificate_date}
@@ -214,30 +233,24 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
                   </div>
                 </div>
 
-                <div className="border border-border rounded-lg p-4 bg-background-secondary/30">
-                  <h4 className="text-sm font-bold text-text-primary mb-3">فترة الحصر</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5 z-20">
-                    <div className="flex flex-col gap-1.5 z-20">
-                      <label className="text-sm font-medium text-text-primary">من تاريخ <span className="text-danger">*</span></label>
-                      <DatePicker
-                        required
-                        value={formData.period_from}
-                        onChange={val => setFormData({ ...formData, period_from: val })}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1.5 z-10">
-                      <label className="text-sm font-medium text-text-primary">إلى تاريخ <span className="text-danger">*</span></label>
-                      <DatePicker
-                        required
-                        value={formData.period_to}
-                        onChange={val => setFormData({ ...formData, period_to: val })}
-                      />
-                    </div>
-                  </div>
+                {/* Period To */}
+                <div className="flex flex-col gap-1.5 z-20">
+                  <label className="text-sm font-medium text-text-primary">
+                    تاريخ الإغلاق "حتى تاريخ" <span className="text-danger">*</span>
+                  </label>
+                  <DatePicker
+                    required
+                    value={formData.period_to}
+                    onChange={val => setFormData({ ...formData, period_to: val })}
+                  />
+                  <p className="text-xs text-text-tertiary">
+                    التاريخ الذي يعكس موقف المشروع حتى لحظته — يُستخدم كمرجع للمستخلص.
+                  </p>
                 </div>
 
+                {/* Notes */}
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium text-text-primary">ملاحظات المستخلص</label>
+                  <label className="text-sm font-medium text-text-primary">ملاحظات</label>
                   <textarea
                     rows={2}
                     value={formData.notes}
@@ -254,8 +267,8 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
               <button
                 type="button"
                 onClick={closeModal}
-                className="rounded-lg px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-white hover:text-text-primary transition-colors border border-transparent hover:border-border hover:shadow-sm"
                 disabled={saving}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-white hover:text-text-primary transition-colors border border-transparent hover:border-border hover:shadow-sm"
               >
                 إلغاء
               </button>
@@ -265,10 +278,9 @@ export default function CreateCertificateModal({ projectId, agreements }: Create
                 disabled={saving || !formData.subcontract_agreement_id || hasPending}
                 className="rounded-lg bg-primary px-6 py-2 text-sm font-bold text-white shadow-sm hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
-                {saving ? 'جارٍ الإنشاء...' : 'إنشاء المستخلص والمتابعة'}
+                {saving ? 'جارٍ الإنشاء...' : 'إنشاء المستخلص'}
               </button>
             </div>
-
           </div>
         </div>
       )}
