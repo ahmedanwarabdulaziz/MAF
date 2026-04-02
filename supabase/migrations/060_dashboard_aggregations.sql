@@ -13,10 +13,8 @@ SELECT
     COALESCE(sub.total_paid, 0) AS sub_paid
 FROM projects p
 LEFT JOIN (
-    SELECT project_id, SUM(amount) AS total_billed, SUM(collected_amount) AS total_collected
-    FROM owner_billing_certificates
-    WHERE status = 'approved'
-    GROUP BY project_id
+    SELECT project_id, total_billed, total_collected
+    FROM owner_receivables_view
 ) ob ON ob.project_id = p.id
 LEFT JOIN (
     SELECT project_id, SUM(net_amount) AS total_cost, SUM(paid_to_date) AS total_paid
