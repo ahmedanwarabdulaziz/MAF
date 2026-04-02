@@ -74,6 +74,50 @@ export async function updateItemGroup(id: string, data: any) {
   return result
 }
 
+export async function deleteItemGroup(id: string) {
+  const supabase = createClient()
+  
+  // Fetch subgroups
+  const { data: subGroups } = await supabase.from('item_groups').select('id').eq('parent_group_id', id)
+  const groupIds = [id, ...(subGroups?.map(g => g.id) || [])]
+  
+  // Check and delete items if any
+  const { data: items } = await supabase.from('items').select('id').in('item_group_id', groupIds)
+  const itemIds = items?.map(i => i.id) || []
+  
+  if (itemIds.length > 0) {
+    const { error: itemsError } = await supabase.from('items').delete().in('id', itemIds)
+    if (itemsError) {
+      if (itemsError.code === '23503') {
+        throw new Error('لا يمكن مسح المجموعة لأن أحد أصنافها أو مجموعاتها الفرعية موجود بالفعل في المشتريات أو الجداول الأخرى.')
+      }
+      throw new Error(itemsError.message)
+    }
+  }
+
+  // Delete sub-groups if any
+  if (subGroups && subGroups.length > 0) {
+    const { error: subError } = await supabase.from('item_groups').delete().in('id', subGroups.map(g => g.id))
+    if (subError) throw new Error(subError.message)
+  }
+
+  // Delete the main group
+  const { error: groupError } = await supabase.from('item_groups').delete().eq('id', id)
+  if (groupError) {
+    if (groupError.code === '23503') throw new Error('لا يمكن مسح المجموعة لارتباطها بجداول أخرى.')
+    throw new Error(groupError.message)
+  }
+
+  await writeAuditLog({
+    action: 'item_group_deleted',
+    entity_type: 'item_group',
+    entity_id: id,
+    description: `مسح مجموعة أصناف`
+  })
+
+  revalidatePath('/company/main_warehouse/item-groups')
+}
+
 // UNITS
 export async function createUnit(data: { company_id: string; arabic_name: string; english_name?: string }) {
   const supabase = createClient()
@@ -130,6 +174,28 @@ export async function updateItem(id: string, data: any) {
   if (error) throw error
   revalidatePath('/company/main_warehouse/items')
   return result
+}
+
+export async function deleteItem(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('items').delete().eq('id', id)
+
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error('لا يمكن مسح الصنف لأنه موجود بالفعل في المشتريات أو جداول أخرى داخل النظام.')
+    }
+    throw new Error(error.message)
+  }
+
+  await writeAuditLog({
+    action: 'item_deleted',
+    entity_type: 'item',
+    entity_id: id,
+    description: `مسح صنف`
+  })
+
+  revalidatePath('/company/main_warehouse/items')
+  revalidatePath('/company/main_warehouse/item-groups')
 }
 
 // WAREHOUSES
@@ -211,6 +277,27 @@ export async function updateWarehouse(id: string, data: any) {
 
   revalidatePath('/company/main_warehouse/warehouses')
   return result
+}
+
+export async function deleteWarehouse(id: string) {
+  const supabase = createClient()
+  const { error } = await supabase.from('warehouses').delete().eq('id', id)
+
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error('لا يمكن مسح المخزن لارتباطه بأرصدة مخزنية أو حركات أخرى. يجب استنزاف/حذف الأرصدة المرتبطة به أولاً.')
+    }
+    throw new Error(error.message)
+  }
+
+  await writeAuditLog({
+    action: 'DELETE',
+    entity_type: 'warehouses',
+    entity_id: id,
+    description: `مسح مخزن`
+  })
+
+  revalidatePath('/company/main_warehouse/warehouses')
 }
 
 // TRANSFERS

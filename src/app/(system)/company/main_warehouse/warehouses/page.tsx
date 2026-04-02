@@ -4,6 +4,7 @@ import { getMainCompanyId } from '@/actions/warehouse'
 import NewWarehouseDialog from './NewWarehouseDialog'
 import EditWarehouseDialog from './EditWarehouseDialog'
 import ViewWarehouseStockDialog from './ViewWarehouseStockDialog'
+import DeleteWarehouseButton from './DeleteWarehouseButton'
 
 export default async function WarehousesPage() {
   await requirePermission('main_warehouse', 'view')
@@ -107,6 +108,7 @@ export default async function WarehousesPage() {
                       initialData={wh}
                     />
                     <ViewWarehouseStockDialog warehouse={wh} />
+                    <DeleteWarehouseButton warehouseId={wh.id} warehouseName={wh.arabic_name} />
                   </td>
                 </tr>
               )

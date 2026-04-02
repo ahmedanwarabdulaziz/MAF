@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { getInvoiceDetails, saveInvoiceLines, submitInvoiceForReceipt, confirmReceipt, getSupplierReturns, deleteSupplierReturn, postSupplierReturn, receiveAdditionalQuantity } from '@/actions/procurement'
 import { createClient } from '@/lib/supabase'
 import SupplierReturnDialog from './SupplierReturnDialog'
+import AttachmentsViewer from '@/components/AttachmentsViewer'
 
 const EyeIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -337,7 +338,12 @@ export default function SupplierInvoiceRowActions({ inv: rowInv, projectId, canA
                   {/* Action Bar inside Dialog */}
                   <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
                     <div>
-                      <h3 className="text-lg font-bold text-navy">{inv.invoice_no}</h3>
+                      <div className="flex items-center gap-4">
+                        <h3 className="text-lg font-bold text-navy">{inv.invoice_no}</h3>
+                        {inv.attachment_urls && inv.attachment_urls.length > 0 && (
+                          <AttachmentsViewer urls={inv.attachment_urls} />
+                        )}
+                      </div>
                       <p className="text-sm text-text-secondary">جهة التوريد: {Array.isArray(inv.supplier) ? inv.supplier[0]?.arabic_name : inv.supplier?.arabic_name} | تاريخ الفاتورة: {inv.invoice_date}</p>
                     </div>
                     {inv.status === 'draft' && (

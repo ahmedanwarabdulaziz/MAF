@@ -441,6 +441,7 @@ export async function recordOwnerCollection(payload: {
   const { data: { user } } = await createClient().auth.getUser()
   const supabase = createAdminClient()
   const { data: project } = await supabase.from('projects').select('company_id').eq('id', payload.project_id).single()
+  const { data: owner } = await supabase.from('parties').select('arabic_name').eq('id', payload.owner_party_id).maybeSingle()
 
   const { data: collection, error } = await supabase
     .from('owner_collections')
@@ -482,6 +483,7 @@ export async function recordOwnerCollection(payload: {
         reference_id:         collection?.id || null,
         notes:                txNote,
         created_by:           user?.id,
+        counterpart_name:     `المالك: ${owner?.arabic_name || 'غير محدد'}`,
       })
 
     if (txErr) {

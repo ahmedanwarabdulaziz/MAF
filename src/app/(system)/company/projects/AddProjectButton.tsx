@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import NewProjectModal from '@/components/modals/NewProjectModal'
+import NewProjectWizardModal from '@/components/modals/NewProjectWizardModal'
 
 export default function AddProjectButton() {
   const [isOpen, setIsOpen] = useState(false)
@@ -15,7 +15,7 @@ export default function AddProjectButton() {
         + إضافة مشروع
       </button>
 
-      <NewProjectModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      <NewProjectWizardModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
     </>
   )
 }

@@ -164,6 +164,7 @@ export async function createCompanyPurchaseInvoice(formData: {
   tax_amount: number
   discount_amount: number
   net_amount: number
+  attachment_urls?: string[]
   notes?: string
   lines: {
     item_id?: string | null
@@ -216,6 +217,7 @@ export async function createCompanyPurchaseInvoice(formData: {
         discount_amount: formData.discount_amount,
         net_amount: formData.net_amount,
         outstanding_amount: formData.net_amount,
+        attachment_urls: formData.attachment_urls || [],
         notes: formData.notes || null,
         created_by: user.id,
       })
@@ -285,6 +287,7 @@ export async function updateCompanyPurchaseInvoice(id: string, formData: {
   tax_amount: number
   discount_amount: number
   net_amount: number
+  attachment_urls?: string[]
   notes?: string
   lines: {
     item_id?: string | null
@@ -328,6 +331,7 @@ export async function updateCompanyPurchaseInvoice(id: string, formData: {
       discount_amount: formData.discount_amount,
       net_amount: formData.net_amount,
       outstanding_amount: formData.net_amount,
+      attachment_urls: formData.attachment_urls || [],
       notes: formData.notes || null,
     })
     .eq('id', id)

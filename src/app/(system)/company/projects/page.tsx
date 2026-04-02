@@ -19,9 +19,11 @@ const STATUS_COLORS: Record<string, string> = {
   cancelled: 'bg-danger/10 text-danger',
 }
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({ searchParams }: { searchParams: { archived?: string } }) {
   await requirePermission('projects', 'view')
-  const projects = await getProjects()
+  
+  const isArchived = searchParams.archived === 'true'
+  const projects = await getProjects({ archived_only: isArchived })
 
   return (
     <div>
@@ -34,6 +36,26 @@ export default async function ProjectsPage() {
           </p>
         </div>
         <AddProjectButton />
+      </div>
+
+      {/* Tabs */}
+      <div className="mb-6 flex gap-2 border-b border-border pb-px">
+        <Link 
+          href="/company/projects"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            !isArchived ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+          }`}
+        >
+          المشروعات الحالية
+        </Link>
+        <Link 
+          href="/company/projects?archived=true"
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            isArchived ? 'border-primary text-primary' : 'border-transparent text-text-secondary hover:text-text-primary hover:border-border'
+          }`}
+        >
+          الأرشيف
+        </Link>
       </div>
 
       {/* Empty state */}

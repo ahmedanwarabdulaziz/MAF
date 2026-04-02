@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import CustomSelect from '@/components/CustomSelect'
 import DatePicker from '@/components/DatePicker'
 import { peekNextCompanyDocumentNo } from '@/actions/sequences'
+import { createClient } from '@/lib/supabase'
 
 const PlusIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
@@ -91,6 +92,8 @@ export default function PurchaseInvoiceForm({
 
   const [discountAmount, setDiscountAmount] = useState(initialData?.discount_amount || 0)
   const [notes, setNotes] = useState(initialData?.notes || '')
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [existingAttachments, setExistingAttachments] = useState<string[]>(initialData?.attachment_urls || [])
 
   const [lines, setLines] = useState<Line[]>(
     initialData?.lines?.length > 0
@@ -160,6 +163,27 @@ export default function PurchaseInvoiceForm({
 
     startTransition(async () => {
       try {
+        let uploadedUrls: string[] = [...existingAttachments]
+
+        // Upload files
+        if (attachments.length > 0) {
+          const db = createClient()
+          for (const file of attachments) {
+            const ext = file.name.split('.').pop() || 'tmp'
+            const path = `company_purchases/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+            
+            const { error: uploadErr } = await db.storage.from('maf-documents').upload(path, file)
+            
+            if (!uploadErr) {
+              const { data } = db.storage.from('maf-documents').getPublicUrl(path)
+              uploadedUrls.push(data.publicUrl)
+            } else {
+              setError('تعذر رفع المرفقات: ' + uploadErr.message)
+              return
+            }
+          }
+        }
+
         const payload = {
           supplier_party_id:   supplierId,
           invoice_no:          invoiceNo,
@@ -173,6 +197,7 @@ export default function PurchaseInvoiceForm({
           tax_amount:          taxAmount,
           discount_amount:     discountAmount,
           net_amount:          netAmount,
+          attachment_urls:     uploadedUrls,
           notes:               notes || undefined,
           lines: lines.map(l => ({
             item_id:             l.item_id || null,
@@ -447,17 +472,79 @@ export default function PurchaseInvoiceForm({
         </div>
       </div>
 
-      {/* Totals + Notes */}
+      {/* Totals + Notes + Attachments */}
       <div className="grid grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl border p-5">
-          <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            rows={4}
-            className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            placeholder="أي ملاحظات إضافية..."
-          />
+        <div className="space-y-6">
+          <div className="bg-white rounded-xl border p-5">
+            <label className="block text-sm font-medium text-gray-700 mb-1">ملاحظات</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={3}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              placeholder="أي ملاحظات إضافية..."
+            />
+          </div>
+
+          {/* Attachments */}
+          <div className="bg-white rounded-xl border p-5">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-800 flex items-center justify-between">
+                <span>المرفقات (اختياري)</span>
+                <span className="text-xs text-text-secondary font-normal">الحد الأقصى 2 ملف</span>
+              </label>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.pdf"
+                onChange={(e) => {
+                  const selected = Array.from(e.target.files || [])
+                  if (selected.length + attachments.length + existingAttachments.length > 2) {
+                    setError('يمكنك إرفاق 2 ملف كحد أقصى.')
+                  } else {
+                    setAttachments(prev => [...prev, ...selected].slice(0, 2))
+                  }
+                  e.target.value = '' // reset input
+                }}
+                className="rounded-lg border border-border bg-white p-1 text-sm outline-none transition-colors file:ml-4 file:py-2 file:px-4 file:border-0 file:font-semibold file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 file:rounded-md file:cursor-pointer text-text-secondary cursor-pointer mt-2"
+              />
+              
+              {/* Existing Attachments */}
+              {existingAttachments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {existingAttachments.map((url, i) => (
+                    <div key={`exist-${i}`} className="flex items-center justify-between bg-gray-50 border border-border rounded-lg px-3 py-2 text-sm shadow-sm">
+                      <div className="flex flex-row items-center gap-2 max-w-[80%]">
+                        <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                        <a href={url} target="_blank" rel="noreferrer" className="truncate text-blue-600 hover:underline" dir="ltr">مرفق سابق {i + 1}</a>
+                      </div>
+                      <button type="button" onClick={() => setExistingAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-white transition-colors p-1.5 rounded-md hover:bg-red-500">
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* New Attachments */}
+              {attachments.length > 0 && (
+                <div className="mt-3 space-y-2">
+                  {attachments.map((file, i) => (
+                    <div key={`new-${i}`} className="flex items-center justify-between bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-sm shadow-sm">
+                      <div className="flex flex-row items-center gap-2 max-w-[80%]">
+                        <svg className="w-4 h-4 text-text-secondary shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" /></svg>
+                        <span className="truncate text-blue-800" dir="ltr">{file.name}</span>
+                        <span className="text-xs text-blue-500">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                      </div>
+                      <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-white transition-colors p-1.5 rounded-md hover:bg-red-500">
+                        <TrashIcon />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl border p-5 space-y-3">

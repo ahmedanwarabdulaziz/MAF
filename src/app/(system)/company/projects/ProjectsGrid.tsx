@@ -10,6 +10,7 @@ const STATUS_LABELS: Record<string, string> = {
   on_hold:   'متوقف',
   completed: 'مكتمل',
   cancelled: 'ملغى',
+  archived:  'مؤرشف',
 }
 const STATUS_COLORS: Record<string, string> = {
   planning:  'bg-blue-500/20 text-blue-200 border border-blue-500/30',
@@ -17,6 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   on_hold:   'bg-amber-500/20 text-amber-200 border border-amber-500/30',
   completed: 'bg-white/10 text-white border border-white/20',
   cancelled: 'bg-red-500/20 text-red-200 border border-red-500/30',
+  archived:  'bg-slate-500/20 text-slate-300 border border-slate-500/30',
 }
 
 export default function ProjectsGrid({ projects }: { projects: any[] }) {
@@ -41,9 +43,14 @@ export default function ProjectsGrid({ projects }: { projects: any[] }) {
                     {project.arabic_name}
                   </div>
                 </div>
-                <span className={`mt-0.5 inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_COLORS[project.status] ?? 'bg-white/10 text-white'}`}>
-                  {STATUS_LABELS[project.status] ?? project.status}
-                </span>
+                {(() => {
+                  const computedStatus = project.archived_at ? 'archived' : project.status;
+                  return (
+                    <span className={`mt-0.5 inline-flex flex-shrink-0 items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_COLORS[computedStatus] ?? 'bg-white/10 text-white'}`}>
+                      {STATUS_LABELS[computedStatus] ?? computedStatus}
+                    </span>
+                  )
+                })()}
               </div>
             </div>
             <div className="p-4 bg-white border-t border-border flex items-center justify-between gap-4">

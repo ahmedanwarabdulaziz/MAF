@@ -30,7 +30,8 @@ export async function getAccountTransactions(accountId: string) {
     .from('financial_transactions')
     .select(`
       *,
-      created_by_user:users(display_name)
+      created_by_user:users(display_name),
+      project:projects(arabic_name)
     `)
     .eq('financial_account_id', accountId)
     .order('transaction_date', { ascending: false })
@@ -58,13 +59,15 @@ export async function transferFunds(payload: {
   amount: number
   transfer_date: string
   notes?: string
+  project_id?: string
+  attachment_urls?: string[]
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
   // Verify accounts
-  const { data: fromAcc } = await supabase.from('financial_accounts').select('id').eq('id', payload.from_account_id).single()
-  const { data: toAcc } = await supabase.from('financial_accounts').select('id').eq('id', payload.to_account_id).single()
+  const { data: fromAcc } = await supabase.from('financial_accounts').select('id, arabic_name').eq('id', payload.from_account_id).single()
+  const { data: toAcc } = await supabase.from('financial_accounts').select('id, arabic_name').eq('id', payload.to_account_id).single()
 
   if (!fromAcc || !toAcc) throw new Error('Invalid accounts selected')
   if (fromAcc.id === toAcc.id) throw new Error('Cannot transfer to the same account')
@@ -78,7 +81,10 @@ export async function transferFunds(payload: {
     reference_type: 'transfer_out',
     reference_id: payload.to_account_id, // We log the destination ID as the reference
     notes: payload.notes || 'تحويل داخلي صادر',
-    created_by: user?.id
+    created_by: user?.id,
+    project_id: payload.project_id || null,
+    attachment_urls: payload.attachment_urls || [],
+    counterpart_name: `الحساب المستلم: ${toAcc.arabic_name}`
   }])
   if (wErr) throw wErr
 
@@ -91,7 +97,10 @@ export async function transferFunds(payload: {
     reference_type: 'transfer_in',
     reference_id: payload.from_account_id, // We log the source ID as the reference
     notes: payload.notes || 'تحويل داخلي وارد',
-    created_by: user?.id
+    created_by: user?.id,
+    project_id: payload.project_id || null,
+    attachment_urls: payload.attachment_urls || [],
+    counterpart_name: `الحساب المصدر: ${fromAcc.arabic_name}`
   }])
   if (dErr) throw dErr
 
@@ -227,6 +236,9 @@ export async function depositFunds(payload: {
   amount: number
   transaction_date: string
   notes?: string
+  project_id?: string
+  attachment_urls?: string[]
+  counterpart_name?: string
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -251,6 +263,9 @@ export async function depositFunds(payload: {
     reference_type: 'manual_adjustment',
     notes: payload.notes || '\u0625\u064a\u062f\u0627\u0639 \u064a\u062f\u0648\u064a',
     created_by: user?.id,
+    project_id: payload.project_id || null,
+    attachment_urls: payload.attachment_urls || [],
+    counterpart_name: payload.counterpart_name || 'غير محدد'
   })
 
   if (error) throw new Error(error.message)

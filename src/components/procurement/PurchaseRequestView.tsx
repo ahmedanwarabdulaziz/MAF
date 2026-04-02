@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { getPurchaseRequestDetails, submitPurchaseRequest, approvePurchaseRequest } from '@/actions/procurement'
 import NewSupplierInvoiceDialog from '@/app/(system)/projects/[id]/procurement/invoices/NewSupplierInvoiceDialog'
 import PurchaseRequestForm from '@/app/(system)/projects/[id]/procurement/requests/PurchaseRequestForm'
+import AttachmentsViewer from '@/components/AttachmentsViewer'
 
 interface PurchaseRequestViewProps {
   projectId: string
@@ -129,9 +130,14 @@ export default function PurchaseRequestView({
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
-            طلب شراء رقم: <span className="font-mono text-navy">{pr.request_no}</span>
-          </h1>
+          <div className="flex items-center justify-start gap-4">
+            <h1 className="text-2xl font-bold text-text-primary flex items-center gap-2">
+              طلب شراء رقم: <span className="font-mono text-navy">{pr.request_no}</span>
+            </h1>
+            {pr.attachment_urls && pr.attachment_urls.length > 0 && (
+              <AttachmentsViewer urls={pr.attachment_urls} />
+            )}
+          </div>
           <p className="mt-1 text-sm text-text-secondary">
             المشروع: {proj?.arabic_name || proj?.name} | مُقدم الطلب: {req?.display_name || 'غير محدد'}
           </p>

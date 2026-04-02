@@ -12,9 +12,10 @@ interface WarehouseFormProps {
   initialData?: any
   onSuccess?: () => void
   onCancel?: () => void
+  cancelText?: string
 }
 
-export default function WarehouseForm({ companyId, projects, initialData, onSuccess, onCancel }: WarehouseFormProps) {
+export default function WarehouseForm({ companyId, projects, initialData, onSuccess, onCancel, cancelText = 'إلغاء' }: WarehouseFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -192,7 +193,7 @@ export default function WarehouseForm({ companyId, projects, initialData, onSucc
             type="checkbox"
             id="is_active"
             name="is_active"
-            defaultChecked={initialData ? initialData.is_active : true}
+            defaultChecked={initialData?.is_active ?? true}
             className="h-4 w-4 rounded border-border text-navy focus:ring-navy"
           />
           <label htmlFor="is_active" className="text-sm font-medium text-gray-700">
@@ -207,7 +208,7 @@ export default function WarehouseForm({ companyId, projects, initialData, onSucc
             onClick={onCancel}
             className="rounded-xl border border-border bg-white px-6 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition shadow-sm"
           >
-            إلغاء
+            {cancelText}
           </button>
           <button
             type="submit"

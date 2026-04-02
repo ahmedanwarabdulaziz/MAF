@@ -14,12 +14,13 @@ export async function getCompany() {
 
 // ─── Projects ─────────────────────────────────────────────────
 
-export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled'
+export type ProjectStatus = 'planning' | 'active' | 'on_hold' | 'completed' | 'cancelled' | 'archived'
 export type ProjectOnboardingType = 'new' | 'existing'
 
 export async function getProjects(filters?: {
   status?: ProjectStatus
   onboarding_type?: ProjectOnboardingType
+  archived_only?: boolean
 }) {
   const supabase = createClient()
   let query = supabase
@@ -30,8 +31,13 @@ export async function getProjects(filters?: {
       planned_allocation_amount, estimated_contract_value, migration_status,
       created_at, cost_centers(arabic_name)
     `)
-    .is('archived_at', null)
     .order('created_at', { ascending: false })
+
+  if (filters?.archived_only) {
+    query = query.not('archived_at', 'is', null)
+  } else {
+    query = query.is('archived_at', null)
+  }
 
   if (filters?.status) query = query.eq('status', filters.status)
   if (filters?.onboarding_type) query = query.eq('project_onboarding_type', filters.onboarding_type)

@@ -370,6 +370,17 @@ export default function ItemDialog({ companyId, itemGroups, units, initialData, 
   const [unitModal, setUnitModal] = useState<null | 'primary' | 'purchase'>(null)
   const [isActive, setIsActive] = useState<boolean>(initialData?.is_active ?? true)
   const [isStocked, setIsStocked] = useState<boolean>(initialData?.is_stocked ?? true)
+
+  // Attachment images (up to 5)
+  const MAX_ATTACHMENTS = 5
+  const [attachmentFiles, setAttachmentFiles] = useState<(File | null)[]>(Array(MAX_ATTACHMENTS).fill(null))
+  const [attachmentPreviews, setAttachmentPreviews] = useState<(string | null)[]>(
+    () => {
+      const existing: (string | null)[] = (initialData?.attachment_urls ?? []).slice(0, MAX_ATTACHMENTS)
+      while (existing.length < MAX_ATTACHMENTS) existing.push(null)
+      return existing
+    }
+  )
   
   const initialForm = {
     arabic_name: initialData?.arabic_name || '',
@@ -385,6 +396,8 @@ export default function ItemDialog({ companyId, itemGroups, units, initialData, 
       setForm(initialForm)
       setSelectedGroupId('')
       setImagePreview(null)
+      setAttachmentFiles(Array(MAX_ATTACHMENTS).fill(null))
+      setAttachmentPreviews(Array(MAX_ATTACHMENTS).fill(null))
     }
     setGroupError(false)
     setError('')
@@ -455,6 +468,26 @@ export default function ItemDialog({ companyId, itemGroups, units, initialData, 
         image_url = null
       }
 
+      // Upload new attachment files
+      const supabaseForAttach = createClient()
+      const finalAttachmentUrls: string[] = []
+      for (let i = 0; i < MAX_ATTACHMENTS; i++) {
+        if (attachmentFiles[i]) {
+          const file = attachmentFiles[i]!
+          const ext = file.name.split('.').pop()
+          const path = `${companyId}/attach-${Date.now()}-${i}.${ext}`
+          const { error: upErr } = await supabaseForAttach.storage
+            .from('items')
+            .upload(path, file, { cacheControl: '3600', upsert: false })
+          if (upErr) throw new Error('فشل رفع مرفق: ' + upErr.message)
+          const { data: { publicUrl } } = supabaseForAttach.storage.from('items').getPublicUrl(path)
+          finalAttachmentUrls.push(publicUrl)
+        } else if (attachmentPreviews[i] && attachmentPreviews[i]!.startsWith('http')) {
+          // Retain existing URL
+          finalAttachmentUrls.push(attachmentPreviews[i]!)
+        }
+      }
+
       const payload = {
         company_id: companyId,
         item_group_id: selectedGroupId,
@@ -466,7 +499,8 @@ export default function ItemDialog({ companyId, itemGroups, units, initialData, 
         is_active: isActive,
         min_stock_level: null,
         notes: null,
-        image_url: image_url
+        image_url: image_url,
+        attachment_urls: finalAttachmentUrls
       }
 
       if (initialData?.id) {
@@ -541,21 +575,22 @@ export default function ItemDialog({ companyId, itemGroups, units, initialData, 
                   
                   <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
                     <div className="space-y-4 lg:col-span-2">
+                      {/* المجموعة — full width row */}
+                      <div className="space-y-1.5 focus-within:relative z-[60]">
+                        <label className="text-sm font-medium text-text-primary">
+                          المجموعة <span className="text-danger">*</span>
+                        </label>
+                        <GroupPicker
+                          groups={itemGroups}
+                          value={selectedGroupId}
+                          onChange={id => { setSelectedGroupId(id); setGroupError(false) }}
+                        />
+                        {groupError && (
+                          <p className="text-xs text-danger mt-1">يرجى اختيار مجموعة الصنف لتنظيم المخزون</p>
+                        )}
+                      </div>
+
                       <div className="grid gap-5 md:grid-cols-2">
-                        <div className="space-y-1.5 focus-within:relative z-[60]">
-                          <label className="text-sm font-medium text-text-primary">
-                            المجموعة <span className="text-danger">*</span>
-                          </label>
-                          <GroupPicker
-                            groups={itemGroups}
-                            value={selectedGroupId}
-                            onChange={id => { setSelectedGroupId(id); setGroupError(false) }}
-                          />
-                          {groupError && (
-                            <p className="text-xs text-danger mt-1">يرجى اختيار مجموعة الصنف لتنظيم المخزون</p>
-                          )}
-                        </div>
-                        
                         <div className="space-y-1.5 focus-within:z-0">
                           <label className="text-sm font-medium text-text-primary">كود الصنف</label>
                           <div className="flex items-center rounded-lg border border-border bg-background-secondary/60 px-4 py-2 min-h-[40px]" dir="ltr">
@@ -674,10 +709,84 @@ export default function ItemDialog({ companyId, itemGroups, units, initialData, 
                   )}
                 </div>
 
+                {/* Attachment Images Section */}
+                <div className="rounded-xl border border-border bg-white p-5 space-y-4 shadow-sm">
+                  <h3 className="font-semibold text-text-primary border-b border-border pb-2 flex items-center gap-2">
+                    <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                    صور إضافية للصنف
+                    <span className="mr-auto text-xs font-normal text-text-secondary">بحد أقصى {MAX_ATTACHMENTS} صور</span>
+                  </h3>
+                  <div className="grid grid-cols-5 gap-3">
+                    {Array.from({ length: MAX_ATTACHMENTS }).map((_, i) => {
+                      const preview = attachmentPreviews[i]
+                      return (
+                        <div key={i} className="relative group">
+                          <div
+                            className={`h-20 rounded-lg border-2 border-dashed flex flex-col items-center justify-center overflow-hidden relative transition-colors ${
+                              preview ? 'border-primary/30 bg-primary/5' : 'border-border bg-background-secondary/30 hover:bg-background-secondary/60'
+                            }`}
+                          >
+                            {preview ? (
+                              <>
+                                <img src={preview} alt={`مرفق ${i + 1}`} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                  <span className="text-white text-xs font-medium">تغيير</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="flex flex-col items-center gap-1 text-text-secondary">
+                                <svg className="w-5 h-5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4" />
+                                </svg>
+                                <span className="text-xs opacity-70">{i + 1}</span>
+                              </div>
+                            )}
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (!file) return
+                                const newFiles = [...attachmentFiles]
+                                const newPreviews = [...attachmentPreviews]
+                                newFiles[i] = file
+                                newPreviews[i] = URL.createObjectURL(file)
+                                setAttachmentFiles(newFiles)
+                                setAttachmentPreviews(newPreviews)
+                                e.target.value = ''
+                              }}
+                            />
+                          </div>
+                          {preview && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const newFiles = [...attachmentFiles]
+                                const newPreviews = [...attachmentPreviews]
+                                newFiles[i] = null
+                                newPreviews[i] = null
+                                setAttachmentFiles(newFiles)
+                                setAttachmentPreviews(newPreviews)
+                              }}
+                              className="absolute -top-1.5 -right-1.5 z-10 h-5 w-5 rounded-full bg-danger text-white flex items-center justify-center shadow hover:bg-danger/80 transition-colors"
+                              title="إزالة"
+                            >
+                              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+
                 {/* Units Section */}
                 <div className="rounded-xl border border-border bg-white p-5 space-y-5 shadow-sm focus-within:z-0">
                   <h3 className="font-semibold text-text-primary border-b border-border pb-2 flex items-center gap-2">
-                    <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                    <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
                     إعدادات الوحدات
                   </h3>
                   

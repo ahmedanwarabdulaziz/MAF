@@ -13,6 +13,7 @@ import ApproveInvoiceButton from './ApproveInvoiceButton'
 import ViewInvoiceModal from './ViewInvoiceModal'
 import EditPurchaseDialog from './EditPurchaseDialog'
 import PayInvoiceDialog from './PayInvoiceDialog'
+import InvoiceAttachmentsButton from './InvoiceAttachmentsButton'
 import PurchasesFilterBar from './PurchasesFilterBar'
 
 const PlusIcon = () => (
@@ -184,9 +185,12 @@ export default async function CompanyPurchasesPage({
                 return (
                   <tr key={inv.id} className="hover:bg-gray-50 transition">
                     <td className="px-4 py-3">
-                      <Link href={`/company/purchases/${inv.id}`} className="font-medium text-blue-600 hover:underline">
-                        {inv.invoice_no}
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Link href={`/company/purchases/${inv.id}`} className="font-medium text-blue-600 hover:underline">
+                          {inv.invoice_no}
+                        </Link>
+                        <InvoiceAttachmentsButton urls={inv.attachment_urls} />
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600">{inv.invoice_date}</td>
                     <td className="px-4 py-3 font-medium">{inv.supplier?.arabic_name ?? '—'}</td>

@@ -5,6 +5,7 @@ import { getCompanyPurchaseInvoice, postCompanyPurchaseInvoice, getCompanyPurcha
 import { useRouter } from 'next/navigation'
 import PayInvoiceDialog from './PayInvoiceDialog'
 import CompanyPurchaseReturnDialog from './CompanyPurchaseReturnDialog'
+import InvoiceAttachmentsButton from './InvoiceAttachmentsButton'
 
 const ViewIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-5 h-5">
@@ -97,9 +98,16 @@ export default function ViewInvoiceModal({ id }: { id: string }) {
             {/* Header */}
             <div className="flex items-center justify-between border-b border-navy/10 bg-navy px-6 py-4 shrink-0 shadow-sm relative z-10">
               <div className="block w-full text-right">
-                <h2 className="text-xl font-bold text-white">
-                  {data ? `مراجعة الفاتورة رقم: ${data.invoice_no}` : 'جاري التحميل...'}
-                </h2>
+                <div className="flex items-center justify-start gap-4">
+                  <h2 className="text-xl font-bold text-white">
+                    {data ? `مراجعة الفاتورة رقم: ${data.invoice_no}` : 'جاري التحميل...'}
+                  </h2>
+                  {data?.attachment_urls && data.attachment_urls.length > 0 && (
+                    <div className="bg-white/10 rounded-lg pr-2">
+                       <InvoiceAttachmentsButton urls={data.attachment_urls} />
+                    </div>
+                  )}
+                </div>
                 <p className="mt-1 text-sm text-white/80">
                   تفاصيل الفاتورة / المصروف المحددة
                 </p>

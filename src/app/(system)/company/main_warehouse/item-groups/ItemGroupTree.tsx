@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { createItemGroup } from '@/actions/warehouse'
 import Link from 'next/link'
+import DeleteItemGroupButton from './DeleteItemGroupButton'
 
 interface Group {
   id: string
@@ -182,6 +183,7 @@ export default function ItemGroupTree({
                                     >
                                         تعديل
                                     </Link>
+                                    <DeleteItemGroupButton groupId={group.id} groupName={group.arabic_name as string} />
                                     <div className="text-xs text-text-secondary bg-background-secondary px-2 py-1 rounded-full">
                                         {groupItems.length} فئة فرعية
                                     </div>
@@ -214,6 +216,8 @@ export default function ItemGroupTree({
                                                             >
                                                                 تعديل
                                                             </Link>
+                                                            <div className="mx-2 inline-block"></div>
+                                                            <DeleteItemGroupButton groupId={item.id} groupName={item.arabic_name as string} />
                                                         </td>
                                                     </tr>
                                                 )) : (

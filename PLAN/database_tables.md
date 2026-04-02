@@ -1,4 +1,4 @@
-﻿### users
+﻿### users.
   - id uuid? [PK]
   - display_name text
   - email text

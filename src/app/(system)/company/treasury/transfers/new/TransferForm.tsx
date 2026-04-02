@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { transferFunds } from '@/actions/treasury'
 import DatePicker from '@/components/DatePicker'
+import CustomSelect from '@/components/CustomSelect'
+import { createClient } from '@/lib/supabase'
+import { useEffect } from 'react'
 
 export default function TransferForm({ accounts, returnPath = '/company/treasury' }: { accounts: any[], returnPath?: string }) {
   const router = useRouter()
@@ -18,6 +21,17 @@ export default function TransferForm({ accounts, returnPath = '/company/treasury
     transfer_date: new Date().toISOString().split('T')[0],
     notes: ''
   })
+  
+  const [projectId, setProjectId] = useState<string | null>(null)
+  const [projects, setProjects] = useState<any[]>([])
+  const [attachments, setAttachments] = useState<File[]>([])
+
+  useEffect(() => {
+    const db = createClient()
+    db.from('projects').select('id, arabic_name').eq('is_active', true).then(res => {
+      setProjects(res.data || [])
+    })
+  }, [])
 
   // Prevent selecting the same account twice and only show active accounts
   const activeAccounts = accounts.filter(a => a.is_active)
@@ -43,12 +57,35 @@ export default function TransferForm({ accounts, returnPath = '/company/treasury
     }
 
     try {
+      let uploadedUrls: string[] = []
+
+      if (attachments.length > 0) {
+        const db = createClient()
+        for (const file of attachments) {
+          const ext = file.name.split('.').pop() || 'tmp'
+          const path = `financial_transactions/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+          
+          const { error: uploadErr } = await db.storage.from('maf-documents').upload(path, file)
+          
+          if (!uploadErr) {
+            const { data } = db.storage.from('maf-documents').getPublicUrl(path)
+            uploadedUrls.push(data.publicUrl)
+          } else {
+            setError('تعذر رفع المرفقات: ' + uploadErr.message)
+            setLoading(false)
+            return
+          }
+        }
+      }
+
       await transferFunds({
         from_account_id: formData.from_account_id,
         to_account_id: formData.to_account_id,
         amount: Number(formData.amount),
         transfer_date: formData.transfer_date,
-        notes: formData.notes
+        notes: formData.notes,
+        project_id: projectId || undefined,
+        attachment_urls: uploadedUrls,
       })
       router.push(returnPath)
     } catch (err: any) {
@@ -157,6 +194,53 @@ export default function TransferForm({ accounts, returnPath = '/company/treasury
                 className="w-full rounded-md border border-border px-3 py-2 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 placeholder="تفاصيل سبب التحويل واعتمادات الإدارة إن وجدت..."
             />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-text-primary mb-1">المشروع المرتبط (اختياري)</label>
+            <CustomSelect
+              value={projectId || ''}
+              onChange={val => setProjectId(val)}
+              options={projects.map(p => ({ value: p.id, label: p.arabic_name }))}
+              placeholder="اختر المشروع (إن وجد)..."
+              searchable={true}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5 focus-within:text-primary">
+            <label className="text-sm font-medium text-text-primary flex items-center justify-between">
+              <span>المرفقات والفواتير (اختياري)</span>
+              <span className="text-xs text-text-secondary font-normal">الحد الأقصى 5 ملفات</span>
+            </label>
+            <input
+              type="file"
+              multiple
+              accept=".jpg,.jpeg,.png,.pdf"
+              onChange={(e) => {
+                const selected = Array.from(e.target.files || [])
+                if (selected.length + attachments.length > 5) {
+                  setError('يمكنك إرفاق 5 ملفات كحد أقصى.')
+                } else {
+                  setAttachments(prev => [...prev, ...selected].slice(0, 5))
+                }
+                e.target.value = '' // reset
+              }}
+              className="rounded-lg border border-border bg-white p-1 text-sm outline-none transition-colors file:ml-4 file:py-1.5 file:px-4 file:border-0 file:font-semibold file:bg-primary/5 file:text-primary hover:file:bg-primary/10 file:rounded-md file:cursor-pointer text-text-secondary cursor-pointer"
+            />
+            
+            {attachments.length > 0 && (
+              <div className="grid grid-cols-1 gap-2 mt-2">
+                {attachments.map((file, i) => (
+                  <div key={i} className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg px-3 py-1.5 text-sm shadow-sm">
+                    <span className="truncate text-primary max-w-[80%]" dir="ltr">{file.name}</span>
+                    <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-danger hover:text-white p-1 rounded hover:bg-danger transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex justify-end gap-3 border-t border-border pt-6">

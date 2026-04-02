@@ -60,6 +60,7 @@ export async function createPurchaseRequest(payload: {
   request_date: string,
   required_by_date?: string,
   notes?: string,
+  attachment_urls?: string[],
   lines: Array<{
     item_id: string,
     requested_quantity: number,
@@ -81,6 +82,7 @@ export async function createPurchaseRequest(payload: {
       request_date: payload.request_date,
       required_by_date: payload.required_by_date || null,
       notes: payload.notes || null,
+      attachment_urls: payload.attachment_urls || [],
       requested_by: user?.id,
       status: 'draft'
     }])
@@ -117,6 +119,7 @@ export async function updatePurchaseRequest(prId: string, payload: {
   request_date: string,
   required_by_date?: string,
   notes?: string,
+  attachment_urls?: string[],
   lines: Array<{
     item_id: string,
     requested_quantity: number,
@@ -133,6 +136,7 @@ export async function updatePurchaseRequest(prId: string, payload: {
       request_date: payload.request_date,
       required_by_date: payload.required_by_date || null,
       notes: payload.notes || null,
+      attachment_urls: payload.attachment_urls || [],
     })
     .eq('id', prId)
     .in('status', ['draft', 'pending_approval']) // Allow editing if it's draft or pending_approval
@@ -275,7 +279,7 @@ export async function getInvoiceDetails(invoiceId: string) {
   return { ...header, lines, receipt_confirmation: confirmations || null, can_approve: can_pm_approve, can_wh_approve, can_pm_approve }
 }
 
-export async function convertPrToInvoice(prId: string, supplierPartyId: string, invoiceNo: string, invoiceDate: string) {
+export async function convertPrToInvoice(prId: string, supplierPartyId: string, invoiceNo: string, invoiceDate: string, attachment_urls?: string[]) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   
@@ -305,6 +309,7 @@ export async function convertPrToInvoice(prId: string, supplierPartyId: string, 
       gross_amount: gross,
       net_amount: gross,
       outstanding_amount: gross,
+      attachment_urls: attachment_urls || [],
       created_by: user?.id
     }])
     .select()

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { getInvoiceDetails, saveInvoiceLines, submitInvoiceForReceipt, confirmReceipt, receiveAdditionalQuantity } from '@/actions/procurement'
 import { createClient } from '@/lib/supabase'
+import AttachmentsViewer from '@/components/AttachmentsViewer'
 
 interface SupplierInvoiceViewProps {
   projectId: string
@@ -186,9 +187,14 @@ export default function SupplierInvoiceView({ projectId, invoiceId, hideBreadcru
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-text-primary">
-            تطابق فاتورة مورد رقم: <span className="font-mono text-navy">{inv.invoice_no}</span>
-          </h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-text-primary">
+              تطابق فاتورة مورد رقم: <span className="font-mono text-navy">{inv.invoice_no}</span>
+            </h1>
+            {inv.attachment_urls && inv.attachment_urls.length > 0 && (
+              <AttachmentsViewer urls={inv.attachment_urls} />
+            )}
+          </div>
           <p className="mt-1 text-sm text-text-secondary">
             جهة التوريد: {supplier?.arabic_name} | تاريخ הפاتورة: {inv.invoice_date}
           </p>

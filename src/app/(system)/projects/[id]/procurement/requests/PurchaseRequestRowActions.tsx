@@ -7,6 +7,7 @@ import { getPurchaseRequestDetails, submitPurchaseRequest, approvePurchaseReques
 
 import PurchaseRequestForm from './PurchaseRequestForm'
 import NewSupplierInvoiceDialog from '../invoices/NewSupplierInvoiceDialog'
+import AttachmentsViewer from '@/components/AttachmentsViewer'
 
 const EyeIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
@@ -140,6 +141,10 @@ export default function PurchaseRequestRowActions({ pr: rowPr, projectId, canApp
         <EyeIcon />
       </button>
 
+      {rowPr.attachment_urls && rowPr.attachment_urls.length > 0 && (
+        <AttachmentsViewer urls={rowPr.attachment_urls} />
+      )}
+
       {/* Details Dialog */}
       {isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -190,7 +195,12 @@ export default function PurchaseRequestRowActions({ pr: rowPr, projectId, canApp
                   {/* Action Bar inside Dialog */}
                   <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-border shadow-sm">
                     <div>
-                      <h3 className="text-lg font-bold text-navy">{pr.request_no}</h3>
+                      <div className="flex items-center gap-4">
+                        <h3 className="text-lg font-bold text-navy">{pr.request_no}</h3>
+                        {pr.attachment_urls && pr.attachment_urls.length > 0 && (
+                          <AttachmentsViewer urls={pr.attachment_urls} />
+                        )}
+                      </div>
                       <p className="text-sm text-text-secondary">مُقدم الطلب: {req?.display_name || 'غير محدد'}</p>
                     </div>
                     <div className="flex gap-3">

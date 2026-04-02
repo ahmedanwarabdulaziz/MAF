@@ -5,6 +5,7 @@ import { Suspense } from 'react'
 import ItemDialog from './ItemDialog'
 import ItemsFilterBar from './ItemsFilterBar'
 import ImagePreviewButton from './ImagePreviewButton'
+import DeleteItemButton from './DeleteItemButton'
 import { getMainCompanyId } from '@/actions/warehouse'
 
 interface PageProps {
@@ -209,6 +210,9 @@ export default async function ItemsPage({ searchParams }: PageProps) {
                         </button>
                       }
                     />
+                    <div className="ml-2 inline-block">
+                        <DeleteItemButton itemId={item.id} itemName={item.arabic_name} />
+                    </div>
                   </td>
                 </tr>
               )

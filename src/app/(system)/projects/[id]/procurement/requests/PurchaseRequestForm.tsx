@@ -28,6 +28,9 @@ export default function PurchaseRequestForm({ projectId, onSuccess, onCancel, in
     required_by_date: initialData?.required_by_date || '',
     notes: initialData?.notes || ''
   })
+  
+  const [attachments, setAttachments] = useState<File[]>([])
+  const [existingAttachments, setExistingAttachments] = useState<string[]>(initialData?.attachment_urls || [])
 
   const [lines, setLines] = useState<{item_id: string, requested_quantity: number, estimated_unit_price: number, notes: string}[]>(
     initialData?.lines?.length > 0
@@ -95,12 +98,34 @@ export default function PurchaseRequestForm({ projectId, onSuccess, onCancel, in
     }
 
     try {
+      let uploadedUrls: string[] = [...existingAttachments]
+
+      if (attachments.length > 0) {
+        const db = createClient()
+        for (const file of attachments) {
+          const ext = file.name.split('.').pop() || 'tmp'
+          const path = `purchase_requests/${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+          
+          const { error: uploadErr } = await db.storage.from('maf-documents').upload(path, file)
+          
+          if (!uploadErr) {
+            const { data } = db.storage.from('maf-documents').getPublicUrl(path)
+            uploadedUrls.push(data.publicUrl)
+          } else {
+            setError('تعذر رفع المرفقات: ' + uploadErr.message)
+            setSaving(false)
+            return
+          }
+        }
+      }
+
       if (initialData?.id) {
         await updatePurchaseRequest(initialData.id, {
           project_id: projectId,
           request_date: formData.request_date,
           required_by_date: formData.required_by_date || undefined,
           notes: formData.notes,
+          attachment_urls: uploadedUrls,
           lines: lines
         })
       } else {
@@ -110,6 +135,7 @@ export default function PurchaseRequestForm({ projectId, onSuccess, onCancel, in
           request_date: formData.request_date,
           required_by_date: formData.required_by_date || undefined,
           notes: formData.notes,
+          attachment_urls: uploadedUrls,
           lines: lines
         })
       }
@@ -173,6 +199,55 @@ export default function PurchaseRequestForm({ projectId, onSuccess, onCancel, in
                 onChange={e => setFormData({ ...formData, notes: e.target.value })}
                 className="rounded-lg border border-border bg-transparent px-3 py-2 text-sm outline-none focus:border-primary transition-colors resize-none"
               />
+            </div>
+
+            {/* Attachments */}
+            <div className="flex flex-col gap-1.5 md:col-span-3 pb-2 pt-2">
+              <label className="text-sm font-semibold text-text-primary flex items-center justify-between">
+                <span>المرفقات (اختياري)</span>
+                <span className="text-xs text-text-secondary font-normal">الحد الأقصى 2 ملف</span>
+              </label>
+              <input
+                type="file"
+                multiple
+                accept=".jpg,.jpeg,.png,.pdf"
+                onChange={(e) => {
+                  const selected = Array.from(e.target.files || [])
+                  if (selected.length + attachments.length + existingAttachments.length > 2) {
+                    setError('يمكنك إرفاق 2 ملف كحد أقصى.')
+                  } else {
+                    setAttachments(prev => [...prev, ...selected].slice(0, 2))
+                  }
+                  e.target.value = '' // reset
+                }}
+                className="rounded-lg border border-border bg-white p-1 text-sm outline-none transition-colors file:ml-4 file:py-2 file:px-4 file:border-0 file:font-semibold file:bg-primary/5 file:text-primary hover:file:bg-primary/10 file:rounded-md file:cursor-pointer text-text-secondary cursor-pointer mt-1"
+              />
+              
+              {existingAttachments.length > 0 && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {existingAttachments.map((url, i) => (
+                    <div key={`exist-${i}`} className="flex items-center justify-between bg-background-secondary border border-border rounded-lg px-3 py-2 text-sm shadow-sm">
+                      <a href={url} target="_blank" rel="noreferrer" className="truncate text-blue-600 hover:underline max-w-[80%]" dir="ltr">مرفق سابق {i + 1}</a>
+                      <button type="button" onClick={() => setExistingAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-danger hover:text-white p-1.5 rounded hover:bg-danger transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {attachments.length > 0 && (
+                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {attachments.map((file, i) => (
+                    <div key={`new-${i}`} className="flex items-center justify-between bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 text-sm shadow-sm">
+                      <span className="truncate text-primary max-w-[80%]" dir="ltr">{file.name}</span>
+                      <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-danger hover:text-white p-1.5 rounded hover:bg-danger transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

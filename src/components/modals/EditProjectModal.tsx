@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import DatePicker from '@/components/DatePicker'
-import { updateProject } from '@/actions/projects'
+import { updateProject, deleteProject } from '@/actions/projects'
 
 interface Props {
   isOpen: boolean
@@ -54,7 +54,7 @@ export default function EditProjectModal({ isOpen, onClose, project }: Props) {
       setForm({
         arabic_name: project.arabic_name || '',
         english_name: project.english_name || '',
-        status: project.status || 'active',
+        status: project.archived_at ? 'archived' : (project.status || 'active'),
         owner_party_id: project.owner_party_id || '',
         location: project.location || '',
         start_date: project.start_date || '',
@@ -95,6 +95,26 @@ export default function EditProjectModal({ isOpen, onClose, project }: Props) {
     } catch (err: any) {
       setError(err.message || 'حدث خطأ أثناء الحفظ')
       setLoading(false)
+    }
+  }
+
+  const [deleting, setDeleting] = useState(false)
+  async function handleDelete() {
+    if (!project) return
+    if (!confirm('هل أنت متأكد من مسح المشروع نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) return
+    
+    setDeleting(true)
+    setError(null)
+    try {
+      await deleteProject(project.id)
+      router.refresh()
+      onClose()
+      window.setTimeout(() => {
+        window.location.reload()
+      }, 100)
+    } catch (err: any) {
+      setError(err.message || 'حدث خطأ أثناء محاولة المسح')
+      setDeleting(false)
     }
   }
 
@@ -163,6 +183,17 @@ export default function EditProjectModal({ isOpen, onClose, project }: Props) {
                     >
                       متوقف
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => set('status', 'archived')}
+                      className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-all ${
+                        form.status === 'archived' 
+                          ? 'bg-white text-navy shadow-sm ring-1 ring-border' 
+                          : 'text-text-secondary hover:text-text-primary'
+                      }`}
+                    >
+                      مؤرشف
+                    </button>
                   </div>
                 </div>
               </div>
@@ -225,15 +256,23 @@ export default function EditProjectModal({ isOpen, onClose, project }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border bg-white p-4 shrink-0 flex justify-end gap-3">
-          <button type="button" onClick={onClose}
-            className="rounded-lg border border-border px-6 py-2.5 text-sm font-medium text-text-secondary hover:bg-background-secondary transition-colors">
-            إلغاء
-          </button>
-          <button form="edit-project-form" type="submit" disabled={loading}
-            className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60 transition-colors">
-            {loading ? 'جارٍ الحفظ...' : 'حفظ التغييرات'}
-          </button>
+        <div className="border-t border-border bg-white p-4 shrink-0 flex items-center justify-between">
+          <div>
+            <button type="button" onClick={handleDelete} disabled={loading || deleting}
+              className="rounded-lg border border-danger/20 text-danger hover:bg-danger/10 px-4 py-2.5 text-sm font-medium transition-colors">
+              {deleting ? 'جاري المسح...' : 'مسح المشروع'}
+            </button>
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} disabled={loading || deleting}
+              className="rounded-lg border border-border px-6 py-2.5 text-sm font-medium text-text-secondary hover:bg-background-secondary transition-colors">
+              إلغاء
+            </button>
+            <button form="edit-project-form" type="submit" disabled={loading || deleting}
+              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              {loading ? 'جارٍ الحفظ...' : 'حفظ التغييرات'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

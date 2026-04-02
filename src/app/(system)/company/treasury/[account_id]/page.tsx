@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { getAccountDetails, getAccountTransactions } from '@/actions/treasury'
 import { notFound } from 'next/navigation'
 import TxDateFilter from './TxDateFilter'
+import AttachmentsViewer from '@/components/AttachmentsViewer'
 
 export const metadata = {
   title: 'حصة الخزينة | نظام إدارة المقاولات'
@@ -159,12 +160,16 @@ export default async function TreasuryAccountDetailPage({
             <table className="w-full text-sm text-right">
               <thead className="bg-background-secondary text-text-secondary border-b border-border">
                 <tr>
-                  <th className="px-6 py-4 font-semibold">تاريخ الحركة</th>
-                  <th className="px-6 py-4 font-semibold">النوع</th>
-                  <th className="px-6 py-4 font-semibold">القيمة ({account.currency})</th>
-                  <th className="px-6 py-4 font-semibold">المستند المرجعي</th>
-                  <th className="px-6 py-4 font-semibold">البيان / ملاحظات</th>
-                  <th className="px-6 py-4 font-semibold">بواسطة</th>
+                  <th className="px-6 py-4 font-semibold text-right">تاريخ الحركة</th>
+                  <th className="px-6 py-4 font-semibold text-right">النوع</th>
+                  <th className="px-6 py-4 font-semibold text-right">القيمة ({account.currency})</th>
+                  <th className="px-6 py-4 font-semibold text-right">المستند المرجعي</th>
+                  <th className="px-6 py-4 font-semibold text-right">الجهة / المستفيد</th>
+                  {!account.project_id && (
+                    <th className="px-6 py-4 font-semibold text-right">المشروع</th>
+                  )}
+                  <th className="px-3 py-4 font-semibold text-right" colSpan={2}>البيان / ملاحظات</th>
+                  <th className="px-6 py-4 font-semibold text-right">بواسطة</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -183,9 +188,35 @@ export default async function TreasuryAccountDetailPage({
                         {tx.transaction_type === 'deposit' ? '+' : '-'}{Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-primary font-medium">{getReferenceLabel(tx)}</td>
-                    <td className="px-6 py-4 text-text-secondary max-w-xs truncate" title={tx.notes}>{tx.notes || '-'}</td>
-                    <td className="px-6 py-4 text-text-secondary">{tx.created_by_user?.display_name || 'System'}</td>
+                    <td className="px-6 py-4 text-primary font-medium w-40">{getReferenceLabel(tx)}</td>
+                    <td className="px-6 py-4 font-medium text-navy min-w-[140px] max-w-[200px] leading-relaxed">
+                      {tx.counterpart_name || '-'}
+                    </td>
+                    
+                    {!account.project_id && (
+                      <td className="px-6 py-4 min-w-[150px]">
+                        {tx.project_id ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-navy/5 text-navy text-xs font-semibold">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3.5 h-3.5"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 11-3 0m3 0a1.5 1.5 0 10-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 01-3 0m3 0a1.5 1.5 0 00-3 0m-9.75 0h9.75" /></svg>
+                            {tx.project?.arabic_name || 'مشروع محذوف'}
+                          </span>
+                        ) : (
+                          <span className="text-text-secondary text-xs">-</span>
+                        )}
+                      </td>
+                    )}
+
+                    <td className="px-3 py-4 text-text-primary whitespace-normal break-words leading-relaxed max-w-[280px]">
+                      {tx.notes || '-'}
+                    </td>
+                    <td className="px-3 py-4 text-left">
+                      {tx.attachment_urls && tx.attachment_urls.length > 0 && (
+                        <div className="-ml-2">
+                          <AttachmentsViewer urls={tx.attachment_urls} />
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-text-secondary whitespace-nowrap">{tx.created_by_user?.display_name || 'System'}</td>
                   </tr>
                 ))}
               </tbody>

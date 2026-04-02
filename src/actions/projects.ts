@@ -77,6 +77,16 @@ export async function createProject(input: CreateProjectInput): Promise<{ id: st
 
 export async function updateProject(id: string, updates: any) {
   const supabase = createClient()
+  
+  if (updates.status) {
+    if (updates.status === 'archived') {
+      updates.status = 'completed' // Avoid constraint error, rely on archived_at
+      updates.archived_at = new Date().toISOString()
+    } else {
+      updates.archived_at = null
+    }
+  }
+
   const { data, error } = await supabase
     .from('projects')
     .update(updates)
@@ -101,4 +111,83 @@ export async function updateProject(id: string, updates: any) {
   revalidatePath('/company/projects', 'layout')
   revalidatePath(`/company/projects/${id}`, 'page')
   return { id: data.id }
+}
+
+export async function deleteProject(id: string) {
+  const supabase = createClient()
+  
+  // Delete associated warehouse first (will fail if warehouse has movements)
+  const { error: whError } = await supabase
+    .from('warehouses')
+    .delete()
+    .eq('project_id', id)
+
+  if (whError && whError.code === '23503') {
+    throw new Error('لا يمكن مسح المشروع لأن المستودع التابع له يحتوي على حركات مخزنية. يرجى التخلص من الحركات أو نقلها أولاً.')
+  }
+
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', id)
+
+  if (error) {
+    if (error.code === '23503') {
+      throw new Error('لا يمكن مسح المشروع لارتباطه بحركات، مستخلصات، فواتير أو أرصده. المشروع يحمل بيانات حالياً ويجب استقراره أو تحويله للأرشيف فقط.')
+    }
+    throw new Error(error.message)
+  }
+
+  await writeAuditLog({
+    action: 'delete_project',
+    entity_type: 'project',
+    entity_id: id,
+    description: `مسح المشروع`,
+  })
+
+  revalidatePath('/company/projects', 'page')
+  revalidatePath('/company/projects', 'layout')
+}
+export async function getProjectWizardData() {
+  const supabase = createClient()
+  
+  // Fetch active system users
+  const { data: users } = await supabase
+    .from('users')
+    .select(`
+      id, display_name, is_super_admin,
+      user_access_scopes:user_permission_group_assignments!user_permission_group_assignments_user_id_fkey(scope_type, project_id, permission_group_id)
+    `)
+    .eq('is_active', true)
+    .order('display_name')
+
+  const { data: treasuryPerms } = await supabase
+    .from('permission_group_permissions')
+    .select('permission_group_id')
+    .eq('module_key', 'treasury')
+    .eq('is_allowed', true)
+  
+  const treasuryGroupIds = treasuryPerms?.map(p => p.permission_group_id) || []
+
+  // Fetch company
+  const { data: company } = await supabase
+    .from('companies')
+    .select('id')
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  // Fetch active projects that can be linked to a cashbox
+  const { data: projects } = await supabase
+    .from('projects')
+    .select('id, arabic_name, project_code')
+    .neq('status', 'archived')
+    .order('created_at', { ascending: false })
+
+  return {
+    users: users || [],
+    treasuryGroupIds,
+    companyId: company?.id || '',
+    projects: projects || []
+  }
 }
