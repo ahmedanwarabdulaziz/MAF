@@ -47,14 +47,20 @@
 - `src/lib/system-context.ts` — Request-scoped cache: `getAuthUser()`, `getUserProfile()`, `getSystemUser()`
 - `src/app/(system)/company/loading.tsx` — Skeleton UI for /company routes
 - `src/app/(system)/projects/[id]/loading.tsx` — Skeleton UI for /projects routes
+- `src/components/Pagination.tsx` — (PERF-04) Reusable server-side pagination UI
 - `supabase/migrations/059_performance_indexes.sql` — 7 composite indexes (applied ✅)
-
+- `supabase/migrations/060_dashboard_aggregations.sql` — (PERF-05) Fast SQL views for dashboards
 ### 🔧 Modified Files
 
 - `src/middleware.ts` — Added PERF timing around `auth.getUser()`
 - `src/app/(system)/layout.tsx` — Uses cached `getSystemUser` from system-context; removed local duplicate
 - `src/lib/auth.ts` — `getSession()` now uses `getUser()` (fixed security warning); `getUser()` delegates to cached `getUserProfile()`; removed DEBUG logs
 - `src/lib/permissions.ts` — `getEffectivePermissions()`, `hasPermission()`, `hasProjectScope()` all use cached `getUserProfile()` instead of fresh DB queries
+- `src/actions/dashboards.ts` — (PERF-05) Swapped manual JS .reduce loops for instant Postgres View queries
+- `src/actions/procurement.ts` — (PERF-04) Added paginated row fetchers instead of pulling thousands of records
+- `src/app/(system)/projects/[id]/procurement/requests/page.tsx` — (PERF-04) Shifted to server-side URLs for pagination
+- `src/app/(system)/projects/[id]/procurement/invoices/page.tsx` — (PERF-04) Shifted to server-side URLs for pagination
+- `src/app/(system)/company/purchases/invoices/page.tsx` — (PERF-04) Shifted to server-side URLs for pagination
 
 ---
 
