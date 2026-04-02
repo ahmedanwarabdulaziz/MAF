@@ -39,7 +39,7 @@
 | **PERF-07** Promise.all heavy pages | ✅ Done | `treasury/page.tsx`, `costs/page.tsx`, `access-scopes/page.tsx` |
 | **PERF-05** Dashboard SQL aggregation | ✅ Done | Move JS aggregation into SQL views/RPC |
 | **PERF-04** Procurement pagination | ✅ Done | Bounded datasets, stop loading all rows |
-| **PERF-08** Client-side caching | 🔵 Future | Only after PERF-02/03/04 stable |
+| **PERF-08** Client-side caching | ✅ Done | Dashboards only, using initialData Hydration
 
 ### 📁 New Files Created
 
