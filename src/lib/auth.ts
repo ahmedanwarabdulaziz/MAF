@@ -1,33 +1,33 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
+import { getAuthUser, getUserProfile } from '@/lib/system-context'
 
 // ─── Session helpers ──────────────────────────────────────────
 
+/**
+ * @deprecated Use getAuthUser() from system-context instead.
+ * Kept for backward compatibility. Uses getUser() (secure) not getSession().
+ */
 export async function getSession() {
   const supabase = createClient()
-  const { data: { session } } = await supabase.auth.getSession()
-  return session
+  // Use getUser() instead of getSession() to avoid the insecure warning.
+  // getSession() reads from cookies without server validation.
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  // Return a session-like object for backward compatibility
+  return { user, access_token: '', token_type: 'bearer' } as any
 }
 
 export async function getUser() {
-  const supabase = createClient()
-  const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
-  if (!authUser) return null
-
-  const { data: profile, error: profileError } = await supabase
-    .from('users')
-    .select('*')
-    .eq('id', authUser.id)
-    .single()
-
-  return profile ?? null
+  return getUserProfile()
 }
 
 /** Redirect to /login if there is no active session */
 export async function requireAuth() {
-  const session = await getSession()
-  if (!session) redirect('/login')
-  return session
+  const user = await getAuthUser()
+  if (!user) redirect('/login')
+  // Return session-like object for backward compatibility
+  return { user } as any
 }
 
 // ─── Super Admin helper ───────────────────────────────────────
@@ -46,9 +46,7 @@ export async function isSuperAdmin(userId: string): Promise<boolean> {
 export async function requireSuperAdmin() {
   await requireAuth()
   const user = await getUser()
-  console.log('[DEBUG] requireSuperAdmin -> user:', user?.email, 'is_super_admin:', user?.is_super_admin)
   if (!user?.is_super_admin) {
-    console.log('[DEBUG] redirecting to /company because not super admin')
     redirect('/company')
   }
   return user
@@ -174,6 +172,5 @@ export async function hasPermission(
     .eq('is_allowed', true)
     .limit(1)
 
-  console.log(`[DEBUG hasPermission] User ${profile.id} checking ${moduleKey}.${actionKey} -> groups: ${groupIds.length}, found: ${!!data?.length}`)
   return !!data?.length
 }

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
+import { getUserProfile } from '@/lib/system-context'
 
 export interface EffectivePermission {
   module_key: string
@@ -20,13 +21,8 @@ export interface UserScope {
 export async function getEffectivePermissions(userId: string, context?: { projectId?: string; warehouseId?: string, includeAllScopes?: boolean }): Promise<EffectivePermission[]> {
   const supabase = createClient()
 
-  // Check super admin first
-  const { data: profile } = await supabase
-    .from('users')
-    .select('is_super_admin')
-    .eq('id', userId)
-    .single()
-
+  // PERF-03: Use cached profile instead of a fresh DB query for is_super_admin.
+  const profile = await getUserProfile()
   if (profile?.is_super_admin) {
     // Super admin gets all defined permissions
     const { data } = await supabase.from('permissions').select('module_key, action_key')
@@ -88,12 +84,8 @@ export async function hasPermission(
 ): Promise<boolean> {
   const supabase = createClient()
 
-  // Super admin bypasses
-  const { data: profile } = await supabase
-    .from('users')
-    .select('is_super_admin')
-    .eq('id', userId)
-    .single()
+  // PERF-03: Use cached profile instead of a fresh DB query for is_super_admin.
+  const profile = await getUserProfile()
   if (profile?.is_super_admin) return true
 
   // Check via group assignments
@@ -169,11 +161,8 @@ export async function getEffectiveModuleKeys(userId: string, context?: { project
 export async function hasProjectScope(userId: string, projectId: string): Promise<boolean> {
   const supabase = createClient()
 
-  const { data: profile } = await supabase
-    .from('users')
-    .select('is_super_admin')
-    .eq('id', userId)
-    .single()
+  // PERF-03: Use cached profile instead of a fresh DB query for is_super_admin.
+  const profile = await getUserProfile()
   if (profile?.is_super_admin) return true
 
   const { data } = await supabase

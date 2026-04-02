@@ -3,26 +3,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCompany } from "@/lib/projects";
 import { createClient } from "@/lib/supabase-server";
-import { getEffectiveModuleKeys, getUserScopes, UserScope } from "@/lib/permissions";
+import { getEffectiveModuleKeys, getUserScopes } from "@/lib/permissions";
+import { perfMark, perfEnd, perfWrap } from "@/lib/perf";
+import { getSystemUser } from "@/lib/system-context";
 import SidebarNav from "./SidebarNav";
 import HeaderNav from "./HeaderNav";
 import SettingsMenu from "./SettingsMenu";
 import PurchaseRequestDialog from "@/components/procurement/PurchaseRequestDialog";
 import SupplierInvoiceDialog from "@/components/procurement/SupplierInvoiceDialog";
-
-async function getSystemUser() {
-  const supabase = createClient();
-  const { data: { user: authUser } } = await supabase.auth.getUser();
-  if (!authUser) redirect("/login");
-
-  const { data: profile } = await supabase
-    .from("users")
-    .select("id, display_name, is_super_admin")
-    .eq("id", authUser.id)
-    .single();
-
-  return profile;
-}
 
 async function getActiveProjects() {
   const supabase = createClient();
@@ -39,19 +27,27 @@ export default async function SystemLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getSystemUser();
+  const tLayout = perfMark('layout:total')
+
+  // PERF-02: getSystemUser is now cached via React cache() in system-context.ts.
+  // If any server action in this request already called getSystemUser(),
+  // this returns the cached result with zero extra DB round-trips.
+  const user = await perfWrap('layout:getSystemUser', getSystemUser);
 
   if (!user) {
     redirect("/login");
   }
 
   // Load effective permissions and scopes in parallel with projects and company data
+  const tParallel = perfMark('layout:parallel-fetch')
   const [projects, allowedModules, userScopes, company] = await Promise.all([
     getActiveProjects(),
     getEffectiveModuleKeys(user.id, { includeAllScopes: true }),
     getUserScopes(user.id),
     getCompany(),
   ]);
+  perfEnd(tParallel)
+  perfEnd(tLayout)
 
   // Convert Set to Array for serialisation into Client Components
   const allowedModulesArray = Array.from(allowedModules);

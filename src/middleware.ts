@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+// PERF-00: dev-only timing (no-op in production)
+const isDev = process.env.NODE_ENV !== 'production'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -26,9 +28,16 @@ export async function middleware(request: NextRequest) {
   )
 
   // Refresh session if expired
+  // PERF-00: measure auth latency in dev
+  const _perfStart = isDev ? Date.now() : 0
   const {
     data: { user },
   } = await supabase.auth.getUser()
+  if (isDev) {
+    const ms = Date.now() - _perfStart
+    const icon = ms > 300 ? '🔴' : ms > 150 ? '🟡' : '🟢'
+    console.log(`[PERF] ${icon} middleware:auth.getUser — ${ms}ms (${request.nextUrl.pathname})`)
+  }
 
   const pathname = request.nextUrl.pathname
 
