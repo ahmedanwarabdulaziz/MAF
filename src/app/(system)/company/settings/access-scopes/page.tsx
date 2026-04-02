@@ -14,27 +14,41 @@ export default async function AccessScopesPage() {
   await requireSuperAdmin()
   const supabase = createClient()
 
-  // Fetch scopes from the unified table
-  const { data: rawScopes } = await supabase
-    .from('user_permission_group_assignments')
-    .select('id, user_id, permission_group_id, scope_type, project_id, warehouse_id, is_active, assigned_at')
-    .order('is_active', { ascending: false })
-    .order('assigned_at', { ascending: false })
-
-  // Fetch users for lookup
-  const { data: allUsers } = await supabase
-    .from('users')
-    .select('id, display_name, email')
-
-  // Fetch projects for lookup
-  const { data: allProjects } = await supabase
-    .from('projects')
-    .select('id, arabic_name, project_code')
-
-  // Fetch permission groups (Role Templates)
-  const { data: roleTemplates } = await supabase
-    .from('permission_groups')
-    .select('id, arabic_name')
+  // Execute all independent data dependencies in parallel
+  const [
+    { data: rawScopes },
+    { data: allUsers },
+    { data: allProjects },
+    { data: roleTemplates },
+    { data: allUsersForForm },
+    { data: projects }
+  ] = await Promise.all([
+    supabase
+      .from('user_permission_group_assignments')
+      .select('id, user_id, permission_group_id, scope_type, project_id, warehouse_id, is_active, assigned_at')
+      .order('is_active', { ascending: false })
+      .order('assigned_at', { ascending: false }),
+    supabase
+      .from('users')
+      .select('id, display_name, email'),
+    supabase
+      .from('projects')
+      .select('id, arabic_name, project_code'),
+    supabase
+      .from('permission_groups')
+      .select('id, arabic_name'),
+    supabase
+      .from('users')
+      .select('id, display_name')
+      .eq('is_active', true)
+      .eq('is_super_admin', false)
+      .order('display_name'),
+    supabase
+      .from('projects')
+      .select('id, arabic_name, project_code')
+      .is('archived_at', null)
+      .order('arabic_name')
+  ])
 
   // Build lookup maps
   const userMap = Object.fromEntries((allUsers ?? []).map(u => [u.id, u]))
@@ -49,21 +63,7 @@ export default async function AccessScopesPage() {
     granted_at: s.assigned_at, // mapped for legacy component compatibility
   }))
 
-  // Users list for form — all active non-super-admin users can always add more scopes
-  const { data: allUsersForForm } = await supabase
-    .from('users')
-    .select('id, display_name')
-    .eq('is_active', true)
-    .eq('is_super_admin', false)
-    .order('display_name')
-
   const users = allUsersForForm ?? []
-
-  const { data: projects } = await supabase
-    .from('projects')
-    .select('id, arabic_name, project_code')
-    .is('archived_at', null)
-    .order('arabic_name')
 
 
   return (

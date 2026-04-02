@@ -20,31 +20,33 @@ export default async function CorporateTreasuryDashboard() {
   await requirePermission('treasury', 'view')
   const supabase = createClient()
   
-  const accounts = await getTreasuryAccounts()
-
-  // Fetch active projects that can be linked to a cashbox
-  const { data: projectsData } = await supabase
-    .from('projects')
-    .select('id, arabic_name, project_code')
-    .neq('status', 'archived')
-    .order('created_at', { ascending: false })
-  
-  // Fetch active system users
-  const { data: usersData } = await supabase
-    .from('users')
-    .select(`
-      id, display_name, is_super_admin,
-      user_access_scopes:user_permission_group_assignments!user_permission_group_assignments_user_id_fkey(scope_type, project_id, permission_group_id)
-    `)
-    .eq('is_active', true)
-    .order('display_name')
-
-  // Identify which permission groups actually have the 'treasury' module allowed
-  const { data: treasuryPerms } = await supabase
-    .from('permission_group_permissions')
-    .select('permission_group_id')
-    .eq('module_key', 'treasury')
-    .eq('is_allowed', true)
+  // Execute all independent queries in parallel
+  const [
+    accounts,
+    { data: projectsData },
+    { data: usersData },
+    { data: treasuryPerms }
+  ] = await Promise.all([
+    getTreasuryAccounts(),
+    supabase
+      .from('projects')
+      .select('id, arabic_name, project_code')
+      .neq('status', 'archived')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('users')
+      .select(`
+        id, display_name, is_super_admin,
+        user_access_scopes:user_permission_group_assignments!user_permission_group_assignments_user_id_fkey(scope_type, project_id, permission_group_id)
+      `)
+      .eq('is_active', true)
+      .order('display_name'),
+    supabase
+      .from('permission_group_permissions')
+      .select('permission_group_id')
+      .eq('module_key', 'treasury')
+      .eq('is_allowed', true)
+  ])
   
   const treasuryGroupIds = treasuryPerms?.map(p => p.permission_group_id) || []
 

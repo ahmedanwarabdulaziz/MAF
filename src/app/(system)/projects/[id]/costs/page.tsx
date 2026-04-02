@@ -22,52 +22,52 @@ export default async function ProjectCostTrackingPage({ params }: { params: { id
     
   if (!project) notFound()
 
-  // 1. Fetch Summary Metrics
-  const metrics = await getProjectDashboardMetrics(params.id)
-
-  // 2. Fetch Detailed Material Issues (أذون الصرف)
-  const { data: issues } = await supabase
-    .from('store_issues')
-    .select(`
-      id, document_no, issue_date,
-      lines:store_issue_lines ( quantity, unit_cost, total_cost, item:item_id (item_code, arabic_name), unit:unit_id(arabic_name) )
-    `)
-    .eq('project_id', params.id)
-    .eq('status', 'confirmed')
-    .order('issue_date', { ascending: false })
-
-  // 3. Fetch Petty Expenses (مصروفات العهدة)
-  const { data: petty } = await supabase
-    .from('petty_expenses')
-    .select(`
-      id, document_no, expense_date, amount, description,
-      category:expense_category_id(arabic_name)
-    `)
-    .eq('project_id', params.id)
-    .eq('status', 'approved')
-    .order('expense_date', { ascending: false })
-
-  // 4. Fetch Subcontractor Certificates (مستخلصات مقاولي الباطن)
-  const { data: subcontractorCertificates } = await supabase
-    .from('subcontractor_certificates')
-    .select(`
-      id, document_no, certificate_date, net_amount,
-      agreement:agreement_id( subcontractor:subcontractor_id(arabic_name) )
-    `)
-    .eq('project_id', params.id)
-    .in('status', ['approved', 'paid_in_full'])
-    .order('certificate_date', { ascending: false })
-
-  // 5. Fetch Direct Supplier Invoices (فواتير الموردين المباشرة للمشروع)
-  const { data: supplierInvoices } = await supabase
-    .from('supplier_invoices')
-    .select(`
-      id, invoice_number, invoice_date, net_amount,
-      supplier:supplier_id(arabic_name)
-    `)
-    .eq('project_id', params.id)
-    .in('status', ['posted', 'partially_paid', 'paid'])
-    .order('invoice_date', { ascending: false })
+  // Execute remaining independent queries in parallel
+  const [
+    metrics,
+    { data: issues },
+    { data: petty },
+    { data: subcontractorCertificates },
+    { data: supplierInvoices }
+  ] = await Promise.all([
+    getProjectDashboardMetrics(params.id),
+    supabase
+      .from('store_issues')
+      .select(`
+        id, document_no, issue_date,
+        lines:store_issue_lines ( quantity, unit_cost, total_cost, item:item_id (item_code, arabic_name), unit:unit_id(arabic_name) )
+      `)
+      .eq('project_id', params.id)
+      .eq('status', 'confirmed')
+      .order('issue_date', { ascending: false }),
+    supabase
+      .from('petty_expenses')
+      .select(`
+        id, document_no, expense_date, amount, description,
+        category:expense_category_id(arabic_name)
+      `)
+      .eq('project_id', params.id)
+      .eq('status', 'approved')
+      .order('expense_date', { ascending: false }),
+    supabase
+      .from('subcontractor_certificates')
+      .select(`
+        id, document_no, certificate_date, net_amount,
+        agreement:agreement_id( subcontractor:subcontractor_id(arabic_name) )
+      `)
+      .eq('project_id', params.id)
+      .in('status', ['approved', 'paid_in_full'])
+      .order('certificate_date', { ascending: false }),
+    supabase
+      .from('supplier_invoices')
+      .select(`
+        id, invoice_number, invoice_date, net_amount,
+        supplier:supplier_id(arabic_name)
+      `)
+      .eq('project_id', params.id)
+      .in('status', ['posted', 'partially_paid', 'paid'])
+      .order('invoice_date', { ascending: false })
+  ])
 
   // Transform Data for easy rendering
   const materialLines = issues?.flatMap(i => 
