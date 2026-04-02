@@ -1,35 +1,39 @@
 import Link from 'next/link'
-import { getSupplierInvoices } from '@/actions/procurement'
+import { getPaginatedSupplierInvoices, getSupplierInvoiceStats } from '@/actions/procurement'
 import NewSupplierInvoiceDialog from './NewSupplierInvoiceDialog'
 import SupplierInvoiceRowActions from './SupplierInvoiceRowActions'
 import { hasPermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase'
+import Pagination from '@/components/Pagination'
 
-export default async function SupplierInvoicesList({ params, searchParams }: { params: { id: string }, searchParams: { filter?: string } }) {
-  const invoices = await getSupplierInvoices(params.id)
+export default async function SupplierInvoicesList({ params, searchParams }: { params: { id: string }, searchParams: { filter?: string, page?: string } }) {
+  const currentPage = searchParams.page ? parseInt(searchParams.page) : 1
+  const filter = searchParams.filter
+  
+  // Use Promise.all to fetch both stats and the paginated list concurrently
+  const [stats, response] = await Promise.all([
+    getSupplierInvoiceStats(params.id),
+    getPaginatedSupplierInvoices(currentPage, 15, params.id, filter)
+  ])
   
   const canApprove = await hasPermission('supplier_procurement', 'review')
   const canWhApprove = await hasPermission('project_warehouse', 'review')
 
   // Fetch confirmations for all these invoices so we can show quick icons
   const db = createClient()
-  const invIds = invoices?.map(i => i.id) || []
+  const invIds = response.data.map((i: any) => i.id) || []
   let confirmations: Record<string, any> = {}
   if (invIds.length > 0) {
     const { data: confs } = await db.from('invoice_receipt_confirmations').select('*').in('supplier_invoice_id', invIds)
     confs?.forEach(c => confirmations[c.supplier_invoice_id] = c)
   }
   
-  const pendingCount = invoices?.filter(i => i.status === 'pending_receipt').length || 0
-  const partialCount = invoices?.filter(i => i.status === 'posted' && i.discrepancy_status === 'pending').length || 0
-  const isFilteredPending = searchParams.filter === 'pending'
-  const isFilteredPartial = searchParams.filter === 'partial'
+  const pendingCount = stats.pendingCount
+  const partialCount = stats.partialCount
+  const isFilteredPending = filter === 'pending'
+  const isFilteredPartial = filter === 'partial'
   
-  const filteredInvoices = isFilteredPending
-    ? invoices?.filter(i => i.status === 'pending_receipt')
-    : isFilteredPartial 
-    ? invoices?.filter(i => i.status === 'posted' && i.discrepancy_status === 'pending')
-    : invoices
+  const filteredInvoices = response.data
 
   return (
     <div className="space-y-6 pb-24 mx-auto max-w-7xl">
@@ -69,7 +73,7 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
         </Link>
         <div className="rounded-xl border border-border bg-white p-5 shadow-sm text-right">
           <p className="text-xs font-semibold text-text-secondary mb-1">إجمالي الفواتير</p>
-          <p className="text-2xl font-bold text-navy">{invoices?.length || 0}</p>
+          <p className="text-2xl font-bold text-navy">{stats.totalCount}</p>
         </div>
       </div>
 
@@ -78,8 +82,9 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
           {(!filteredInvoices || filteredInvoices.length === 0) ? (
             <div className="py-12 text-center text-text-secondary">لا توجد فواتير مطابقة لهذا التصنيف.</div>
           ) : (
-            <table className="w-full text-right text-sm">
-              <thead className="bg-background-secondary border-b border-border">
+            <>
+              <table className="w-full text-right text-sm">
+                <thead className="bg-background-secondary border-b border-border">
                 <tr>
                   <th className="px-4 py-4 font-semibold text-text-secondary">رقم الفاتورة</th>
                   <th className="px-4 py-4 font-semibold text-text-secondary">المورد</th>
@@ -127,7 +132,9 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
                 })}
               </tbody>
             </table>
-          )}
+            <Pagination currentPage={response.page} totalPages={response.totalPages} totalCount={response.count} />
+          </>
+        )}
         </div>
       </div>
     </div>

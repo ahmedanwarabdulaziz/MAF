@@ -24,6 +24,30 @@ export async function getPurchaseRequests(projectId?: string) {
   return data
 }
 
+export async function getPaginatedPurchaseRequests(page: number = 1, pageSize: number = 15, projectId?: string) {
+  const supabase = createClient()
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase.from('purchase_requests').select(`
+    *,
+    requester:requested_by(display_name),
+    project:project_id(arabic_name)
+  `, { count: 'exact' }).order('created_at', { ascending: false })
+  
+  if (projectId) query = query.eq('project_id', projectId)
+  
+  const { data, error, count } = await query.range(from, to)
+  if (error) throw error
+  return {
+    data: data || [],
+    count: count || 0,
+    page,
+    pageSize,
+    totalPages: count ? Math.ceil(count / pageSize) : 0
+  }
+}
+
 export async function getPurchaseRequestDetails(prId: string) {
   const supabase = createClient()
   
@@ -239,6 +263,58 @@ export async function getSupplierInvoices(projectId?: string, supplierPartyId?: 
   const { data, error } = await query
   if (error) throw error
   return data
+}
+
+export async function getPaginatedSupplierInvoices(page: number = 1, pageSize: number = 15, projectId?: string, filter?: string) {
+  const supabase = createClient()
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+
+  let query = supabase.from('supplier_invoices').select(`
+    *,
+    supplier:supplier_party_id(arabic_name),
+    project:project_id(arabic_name)
+  `, { count: 'exact' }).order('created_at', { ascending: false })
+  
+  if (projectId) query = query.eq('project_id', projectId)
+  
+  if (filter === 'pending') {
+    query = query.eq('status', 'pending_receipt')
+  } else if (filter === 'partial') {
+    query = query.eq('status', 'posted').eq('discrepancy_status', 'pending')
+  }
+  
+  const { data, count, error } = await query.range(from, to)
+  if (error) throw error
+  return {
+    data: data || [],
+    count: count || 0,
+    page,
+    pageSize,
+    totalPages: count ? Math.ceil(count / pageSize) : 0
+  }
+}
+
+export async function getSupplierInvoiceStats(projectId?: string) {
+  const supabase = createClient()
+  
+  let pendingQuery = supabase.from('supplier_invoices').select('id', { count: 'exact', head: true }).eq('status', 'pending_receipt')
+  let partialQuery = supabase.from('supplier_invoices').select('id', { count: 'exact', head: true }).eq('status', 'posted').eq('discrepancy_status', 'pending')
+  let allQuery = supabase.from('supplier_invoices').select('id', { count: 'exact', head: true })
+
+  if (projectId) {
+    pendingQuery = pendingQuery.eq('project_id', projectId)
+    partialQuery = partialQuery.eq('project_id', projectId)
+    allQuery = allQuery.eq('project_id', projectId)
+  }
+
+  const [pending, partial, all] = await Promise.all([pendingQuery, partialQuery, allQuery])
+  
+  return {
+    pendingCount: pending.count || 0,
+    partialCount: partial.count || 0,
+    totalCount: all.count || 0
+  }
 }
 
 export async function getInvoiceDetails(invoiceId: string) {
