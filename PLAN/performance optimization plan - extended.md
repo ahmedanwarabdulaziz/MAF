@@ -15,16 +15,10 @@
 | **PERF-06** DB composite indexes | ✅ Done | `supabase/migrations/059_performance_indexes.sql` (new, applied) |
 | **PERF-09** RLS support index | ✅ Done | included in `059_performance_indexes.sql` |
 
-### ⚠️ PENDING GIT PUSH
+### ✅ GIT PUSH STATUS
 
-The git commit and push did NOT complete — the terminal became unresponsive.
-
-**Action required at start of next conversation:**
-```
-git add -A
-git commit -m "perf: PERF-00/01/02/03/06/09 — baseline timing, loading skeletons, cached auth context, db indexes"
-git push origin main
-```
+- **Status**: ✅ All Phase 1 changes have been successfully committed and pushed to `main`.
+- Untracked perf testing files have been generated, but core optimizations are safe on GitHub.
 
 ### 📊 Measured Results (dev environment)
 

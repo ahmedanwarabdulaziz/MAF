@@ -1,0 +1,175 @@
+﻿ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MAF Performance Test ΓÇö Post-Index Baseline
+  2026-04-02T13:17:06.577Z
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+
+≡ƒôè Query Plans (EXPLAIN ANALYZE):
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+[user_access_scopes ΓÇö RLS pattern]:
+  Index Only Scan using idx_user_access_scopes_user_active on user_access_scopes  (cost=0.18..2.40 rows=1 width=49) (actual time=0.025..0.026 rows=0 loops=1)
+    Index Cond: ((user_id = (InitPlan 1).col1) AND (is_active = true))
+    Heap Fetches: 0
+    Buffers: shared hit=3
+    InitPlan 1
+      ->  Limit  (cost=0.00..0.03 rows=1 width=16) (actual time=0.015..0.015 rows=1 loops=1)
+            Buffers: shared hit=1
+            ->  Seq Scan on users  (cost=0.00..14.20 rows=420 width=16) (actual time=0.014..0.014 rows=1 loops=1)
+                  Buffers: shared hit=1
+  Planning:
+    Buffers: shared hit=146
+  Planning Time: 0.531 ms
+  Execution Time: 0.080 ms
+
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+
+ΓòÉ
+  RESULTS (avg of 5 runs each)
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+Test                                                 avg   min   max
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+user_access_scopes (RLS sub-select simulation)     426ms  263ms  544ms
+permission group assignments (per user)            494ms  296ms  1035ms
+permission_group_permissions (allowed only)        591ms  176ms  1072ms
+purchase_requests (project filter + status + ...   517ms  210ms  1392ms
+supplier_invoices (project filter + status + ...   451ms  230ms  774ms
+financial_transactions (account + date order)      431ms  178ms  938ms
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+TOTAL (sum of all queries)                        2910ms
+
+≡ƒôê Visual (avg, 500ms scale):
+  user_access_scopes (RLS sub-select simul   ≡ƒö┤ ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûæΓûæΓûæΓûæ 426ms
+  permission group assignments (per user)    ≡ƒö┤ ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûê 494ms
+  permission_group_permissions (allowed on   ≡ƒö┤ ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûê 591ms
+  purchase_requests (project filter + stat   ≡ƒö┤ ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûê 517ms
+  supplier_invoices (project filter + stat   ≡ƒö┤ ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûæΓûæΓûæ 451ms
+  financial_transactions (account + date o   ≡ƒö┤ ΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûêΓûæΓûæΓûæΓûæ 431ms
+
+
+ΓÜá  Slow queries (>200ms avg):
+   ΓÇó user_access_scopes (RLS sub-select simulation): 426ms avg
+   ΓÇó permission group assignments (per user): 494ms avg
+   ΓÇó permission_group_permissions (allowed only): 591ms avg
+   ΓÇó purchase_requests (project filter + status + date): 517ms avg
+   ΓÇó supplier_invoices (project filter + status + date): 451ms avg
+   ΓÇó financial_transactions (account + date order): 431ms avg
+
+
