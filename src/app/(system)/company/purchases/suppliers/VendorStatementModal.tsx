@@ -10,6 +10,7 @@ import ViewInvoiceModal from '../ViewInvoiceModal'
 import { requestRetentionRelease, approveRetentionRelease, payRetentionRelease, RetentionMetric } from '@/actions/retention'
 import { fetchVendorStatementData } from '@/actions/vendorStatement'
 import { useEffect, useCallback } from 'react'
+import GlobalDraftPaymentModal from './GlobalDraftPaymentModal'
 
 const STATUS_LABELS: Record<string, { label: string; badgeClass: string }> = {
   draft:          { label: 'مسودة',          badgeClass: 'bg-gray-100 text-gray-700' },
@@ -111,6 +112,8 @@ export default function VendorStatementModal({
   const [payRetId, setPayRetId] = useState<string | null>(null)
   const [payRetAmount, setPayRetAmount] = useState(0)
 
+  const [isDraftPaymentOpen, setIsDraftPaymentOpen] = useState(false)
+
   const fmt = (n: number) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 })
 
   // Default extracts for hooks safety
@@ -127,11 +130,16 @@ export default function VendorStatementModal({
   const computeMetrics = (list: any[]) => list.reduce((acc, inv) => {
     if (['posted', 'partially_paid', 'paid', 'approved', 'paid_in_full'].includes(inv.status)) {
       const rtAmt = Number(inv.returned_amount || 0)
+      const paidAmt = Number(inv.paid_to_date || 0)
+      const netAmt = Number(inv.net_amount || 0)
+      
+      const realOutstanding = Math.max(0, netAmt - rtAmt - paidAmt)
+
       acc.total_gross += Number(inv.gross_amount)
-      acc.total_net += (Number(inv.net_amount) - rtAmt)
+      acc.total_net += (netAmt - rtAmt)
       acc.total_returned += rtAmt
-      acc.total_paid += Number(inv.paid_to_date)
-      acc.total_outstanding += Number(inv.outstanding_amount)
+      acc.total_paid += paidAmt
+      acc.total_outstanding += realOutstanding
     }
     return acc
   }, { total_gross: 0, total_net: 0, total_paid: 0, total_outstanding: 0, total_returned: 0 })
@@ -196,15 +204,15 @@ export default function VendorStatementModal({
 
   const totalOutstandingSub = (projectId: string) => {
     return (certificates || [])
-      .filter(c => c.project_id === projectId && ['approved', 'partially_paid'].includes(c.status) && Number(c.outstanding_amount) > 0)
-      .reduce((sum, c) => sum + Number(c.outstanding_amount), 0)
+      .filter(c => c.project_id === projectId && ['approved', 'partially_paid'].includes(c.status) && Math.max(0, Number(c.net_amount) - Number(c.returned_amount || 0) - Number(c.paid_to_date || 0)) > 0)
+      .reduce((sum, c) => sum + Math.max(0, Number(c.net_amount) - Number(c.returned_amount || 0) - Number(c.paid_to_date || 0)), 0)
   }
 
   // Live preview for subcontractor bulk payment allocation
   const bulkSubAllocationPreview = useMemo(() => {
     if (!bulkSubProjectId) return []
     const payableCerts = [...(certificates || [])]
-      .filter(c => c.project_id === bulkSubProjectId && ['approved', 'partially_paid'].includes(c.status) && Number(c.outstanding_amount) > 0)
+      .filter(c => c.project_id === bulkSubProjectId && ['approved', 'partially_paid'].includes(c.status) && Math.max(0, Number(c.net_amount) - Number(c.returned_amount || 0) - Number(c.paid_to_date || 0)) > 0)
       .sort((a, b) => {
         if (a.created_at < b.created_at) return -1
         if (a.created_at > b.created_at) return 1
@@ -212,7 +220,7 @@ export default function VendorStatementModal({
       })
     let remaining = bulkAmount
     return payableCerts.map(cert => {
-      const outstanding = Number(cert.outstanding_amount)
+      const outstanding = Math.max(0, Number(cert.net_amount) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0))
       const allocated = Math.min(remaining, outstanding)
       remaining = Math.max(0, remaining - allocated)
       return { ...cert, allocated, willBePaid: allocated > 0 }
@@ -227,7 +235,7 @@ export default function VendorStatementModal({
       : projectInvoices.filter(i => i.project_id === bulkScope)
 
     const payableInvoices = [...sourceList]
-      .filter(i => ['posted', 'partially_paid'].includes(i.status) && Number(i.outstanding_amount) > 0)
+      .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
       .sort((a, b) => {
         if (a.invoice_date < b.invoice_date) return -1
         if (a.invoice_date > b.invoice_date) return 1
@@ -235,7 +243,7 @@ export default function VendorStatementModal({
       })
     let remaining = bulkAmount
     return payableInvoices.map(inv => {
-      const outstanding = Number(inv.outstanding_amount)
+      const outstanding = Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0))
       const allocated = Math.min(remaining, outstanding)
       remaining = Math.max(0, remaining - allocated)
       return { ...inv, allocated, willBePaid: allocated > 0 }
@@ -245,28 +253,29 @@ export default function VendorStatementModal({
   const totalOutstandingScope = useMemo(() => {
     if (bulkScope === 'company') {
       return companyInvoices
-        .filter(i => ['posted', 'partially_paid'].includes(i.status) && Number(i.outstanding_amount) > 0)
-        .reduce((sum, i) => sum + Number(i.outstanding_amount), 0)
+        .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
+        .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)), 0)
     } else if (bulkScope) {
       return projectInvoices
-        .filter(i => i.project_id === bulkScope && ['posted', 'partially_paid'].includes(i.status) && Number(i.outstanding_amount) > 0)
-        .reduce((sum, i) => sum + Number(i.outstanding_amount), 0)
+        .filter(i => i.project_id === bulkScope && ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
+        .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)), 0)
     }
     return 0
   }, [bulkScope, companyInvoices, projectInvoices])
 
   const totalOutstandingCompany = companyInvoices
-    .filter(i => ['posted', 'partially_paid'].includes(i.status) && Number(i.outstanding_amount) > 0)
-    .reduce((sum, i) => sum + Number(i.outstanding_amount), 0)
+    .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
+    .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)), 0)
 
-  const hasAnyProjectOutstanding = projectInvoices.some(i => ['posted', 'partially_paid'].includes(i.status) && Number(i.outstanding_amount) > 0)
+  const hasAnyProjectOutstanding = projectInvoices.some(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
 
   const handlePay = (e: React.FormEvent) => {
     e.preventDefault()
     if (!payInvoiceId) return
     if (!payAccountId) return setError('يرجى اختيار حساب الخزينة/البنك')
     
-    const maxAmt = companyInvoices.find(i => i.id === payInvoiceId)?.outstanding_amount || 0
+    const inv = companyInvoices.find(i => i.id === payInvoiceId)
+    const maxAmt = inv ? Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0)) : 0
     if (payAmount <= 0 || payAmount > maxAmt) return setError('المبلغ المدخل غير صالح')
 
     setError(null)
@@ -343,7 +352,8 @@ export default function VendorStatementModal({
     if (!payCertId) return
     if (!payAccountId) return setError('يرجى اختيار الحساب')
     
-    const maxAmt = certificates.find(c => c.id === payCertId)?.outstanding_amount || 0
+    const cert = certificates.find(c => c.id === payCertId)
+    const maxAmt = cert ? Math.max(0, Number(cert.net_amount) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0)) : 0
     if (payAmount <= 0 || payAmount > maxAmt) return setError('المبلغ المدخل غير صالح')
 
     setError(null)
@@ -379,36 +389,39 @@ export default function VendorStatementModal({
     const list: { id: string, type: 'company_purchase_invoice'|'supplier_invoice'|'subcontractor_certificate', title: string, outstanding: number, projectId: string | null }[] = []
     
     companyInvoices.forEach(i => {
-      if (i.status !== 'paid' && Number(i.outstanding_amount) > 0) {
+      const realOutstanding = Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0))
+      if (i.status !== 'paid' && realOutstanding > 0) {
         list.push({
           id: i.id,
           type: 'company_purchase_invoice',
           title: `فاتورة ${i.invoice_no} (شركة رئيسية)`,
-          outstanding: Number(i.outstanding_amount),
+          outstanding: realOutstanding,
           projectId: null
         })
       }
     })
 
     projectInvoices.forEach(i => {
-      if (i.status !== 'paid' && Number(i.outstanding_amount) > 0) {
+      const realOutstanding = Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0))
+      if (i.status !== 'paid' && realOutstanding > 0) {
         list.push({
           id: i.id,
           type: 'supplier_invoice',
           title: `فاتورة ${i.invoice_no} (${i.project?.arabic_name || 'مشروع غير محدد'})`,
-          outstanding: Number(i.outstanding_amount),
+          outstanding: realOutstanding,
           projectId: i.project_id
         })
       }
     })
 
     ;(certificates || []).forEach(c => {
-      if (c.status !== 'paid' && Number(c.outstanding_amount) > 0) {
+      const realOutstanding = Math.max(0, Number(c.net_amount) - Number(c.returned_amount || 0) - Number(c.paid_to_date || 0))
+      if (c.status !== 'paid' && realOutstanding > 0) {
         list.push({
           id: c.id,
           type: 'subcontractor_certificate',
           title: `مستخلص ${c.certificate_no} (${c.project?.arabic_name || 'مشروع غير محدد'})`,
-          outstanding: Number(c.outstanding_amount),
+          outstanding: realOutstanding,
           projectId: c.project_id
         })
       }
@@ -568,6 +581,13 @@ export default function VendorStatementModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
       <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
+      
+      <GlobalDraftPaymentModal 
+        isOpen={isDraftPaymentOpen}
+        onClose={() => setIsDraftPaymentOpen(false)}
+        initialPartyId={party.id}
+      />
+
       <div className="relative w-full max-w-7xl bg-background rounded-2xl shadow-2xl border border-border flex flex-col overflow-hidden max-h-[96vh] animate-in zoom-in-95 duration-200">
         
         {/* Header */}
@@ -712,7 +732,8 @@ export default function VendorStatementModal({
           <tbody className="divide-y divide-gray-100">
             {companyInvoices.map((inv) => {
               const status = STATUS_LABELS[inv.status] || { label: inv.status, badgeClass: 'bg-gray-100 text-gray-700' }
-              const canPay = ['posted', 'partially_paid'].includes(inv.status) && Number(inv.outstanding_amount) > 0
+              const realOutstanding = Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0))
+              const canPay = ['posted', 'partially_paid'].includes(inv.status) && realOutstanding > 0
               const contextLabel = inv.invoice_type === 'general_expense' 
                 ? (inv.expense_category?.arabic_name ?? '—') 
                 : (inv.warehouse?.arabic_name ?? '—')
@@ -731,8 +752,8 @@ export default function VendorStatementModal({
                   <td className="px-4 py-3 text-purple-700 font-medium dir-ltr text-right">{Number(inv.returned_amount || 0) > 0 ? fmt(inv.returned_amount) : '—'}</td>
                   <td className="px-4 py-3 text-success font-medium dir-ltr text-right">{fmt(inv.paid_to_date)}</td>
                   <td className="px-4 py-3 font-bold text-gray-900 dir-ltr text-right">
-                     <span className={Number(inv.outstanding_amount) > 0 ? 'text-danger' : Number(inv.outstanding_amount) < 0 ? 'text-purple-600' : 'text-gray-500'}>
-                        {fmt(inv.outstanding_amount)}
+                     <span className={realOutstanding > 0 ? 'text-danger' : realOutstanding < 0 ? 'text-purple-600' : 'text-gray-500'}>
+                        {fmt(realOutstanding)}
                      </span>
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -742,20 +763,31 @@ export default function VendorStatementModal({
                   </td>
                   <td className="px-4 py-3 text-center space-x-2 space-x-reverse flex justify-center">
                     {canPay && (
-                      <button
-                        onClick={() => {
-                          setPayInvoiceId(inv.id)
-                          setPaySourceMode('treasury')
-                          setPayAmount(inv.outstanding_amount)
-                          setPayAccountId('')
-                          setPayAdvanceProjectId('')
-                          setPayRef('')
-                          setError(null)
-                        }}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded text-xs font-bold hover:bg-success/20 transition-colors shadow-sm"
-                      >
-                        سداد الدفعة
-                      </button>
+                      <>
+                        <button
+                          onClick={() => {
+                            setPayInvoiceId(inv.id)
+                            setPaySourceMode('treasury')
+                            setPayAmount(realOutstanding)
+                            setPayAccountId('')
+                            setPayAdvanceProjectId('')
+                            setPayRef('')
+                            setError(null)
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded text-xs font-bold hover:bg-success/20 transition-colors shadow-sm"
+                        >
+                          سداد الدفعة
+                        </button>
+                        <button
+                          onClick={() => setIsDraftPaymentOpen(true)}
+                          title="إصدار أمر دفع مركزي"
+                          className="inline-flex items-center justify-center w-7 h-7 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors shadow-sm"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                          </svg>
+                        </button>
+                      </>
                     )}
                     <ViewInvoiceModal id={inv.id} />
                   </td>
@@ -795,6 +827,7 @@ export default function VendorStatementModal({
             <tbody className="divide-y divide-gray-100">
               {prjInvoices.map((inv) => {
                 const status = STATUS_LABELS[inv.status] || { label: inv.status, badgeClass: 'bg-gray-100 text-gray-700' }
+                const realOutstanding = Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0))
                 
                 return (
                   <tr key={inv.id} className="hover:bg-gray-50/50 transition-colors">
@@ -816,8 +849,8 @@ export default function VendorStatementModal({
                     <td className="px-4 py-3 text-purple-700 font-medium dir-ltr text-right">{Number(inv.returned_amount || 0) > 0 ? fmt(inv.returned_amount) : '—'}</td>
                     <td className="px-4 py-3 text-success font-medium dir-ltr text-right">{fmt(inv.paid_to_date)}</td>
                     <td className="px-4 py-3 font-bold text-gray-900 dir-ltr text-right">
-                       <span className={Number(inv.outstanding_amount) > 0 ? 'text-danger' : Number(inv.outstanding_amount) < 0 ? 'text-purple-600' : 'text-gray-500'}>
-                          {fmt(inv.outstanding_amount)}
+                       <span className={realOutstanding > 0 ? 'text-danger' : realOutstanding < 0 ? 'text-purple-600' : 'text-gray-500'}>
+                          {fmt(realOutstanding)}
                        </span>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -825,13 +858,24 @@ export default function VendorStatementModal({
                         {status.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center space-x-2 space-x-reverse flex justify-center">
+                    <td className="px-4 py-3 text-center space-x-2 space-x-reverse flex justify-center items-center">
                       <Link
                         href={`/projects/${inv.project_id}/procurement/invoices/${inv.id}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-text-primary bg-white hover:bg-background-secondary text-xs font-bold transition-colors"
                       >
-                        عرض الفاتورة أو دفعها
+                        عرض التفاصيل
                       </Link>
+                      {['posted', 'partially_paid'].includes(inv.status) && (
+                        <button
+                          onClick={() => setIsDraftPaymentOpen(true)}
+                          title="إصدار أمر دفع مركزي"
+                          className="inline-flex items-center justify-center w-7 h-7 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors shadow-sm"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                          </svg>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )
@@ -867,7 +911,8 @@ export default function VendorStatementModal({
             <tbody className="divide-y divide-gray-100">
               {prjCerts.map((cert) => {
                 const status = STATUS_LABELS[cert.status] || { label: cert.status, badgeClass: 'bg-gray-100 text-gray-700' }
-                const canPay = ['approved', 'partially_paid'].includes(cert.status) && Number(cert.outstanding_amount) > 0
+                const realOutstanding = Math.max(0, Number(cert.net_amount) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0))
+                const canPay = ['approved', 'partially_paid'].includes(cert.status) && realOutstanding > 0
 
                 return (
                   <tr key={cert.id} className="hover:bg-gray-50/50 transition-colors">
@@ -879,8 +924,8 @@ export default function VendorStatementModal({
                     <td className="px-4 py-3 text-purple-700 font-medium dir-ltr text-right">{Number(cert.returned_amount || 0) > 0 ? fmt(cert.returned_amount) : '—'}</td>
                     <td className="px-4 py-3 text-success font-medium dir-ltr text-right">{fmt(cert.paid_to_date)} ج.م</td>
                     <td className="px-4 py-3 font-bold text-gray-900 dir-ltr text-right">
-                       <span className={Number(cert.outstanding_amount) > 0 ? 'text-danger' : Number(cert.outstanding_amount) < 0 ? 'text-purple-600' : 'text-gray-500'}>
-                          {fmt(cert.outstanding_amount)} ج.م
+                       <span className={realOutstanding > 0 ? 'text-danger' : realOutstanding < 0 ? 'text-purple-600' : 'text-gray-500'}>
+                          {fmt(realOutstanding)} ج.م
                        </span>
                     </td>
                     <td className="px-4 py-3 text-center">
@@ -888,29 +933,40 @@ export default function VendorStatementModal({
                         {status.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center space-x-2 space-x-reverse flex justify-center">
-                      {canPay && (
-                        <button
-                          onClick={() => {
-                            setPayCertId(cert.id)
-                            setPaySourceMode('treasury')
-                            setPayAmount(cert.outstanding_amount)
-                            setPayAccountId('')
-                            setPayAdvanceProjectId('')
-                            setPayRef('')
-                            setError(null)
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded text-xs font-bold hover:bg-success/20 transition-colors shadow-sm"
-                        >
-                          سداد المستخلص
-                        </button>
-                      )}
+                    <td className="px-4 py-3 text-center space-x-2 space-x-reverse flex justify-center items-center">
                       <Link
                         href={`/projects/${cert.project_id}/certificates/${cert.id}`}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded text-text-primary bg-white hover:bg-background-secondary text-xs font-bold transition-colors"
                       >
                         التفاصيل
                       </Link>
+                      {canPay && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setPayCertId(cert.id)
+                              setPaySourceMode('treasury')
+                              setPayAmount(realOutstanding)
+                              setPayAccountId('')
+                              setPayAdvanceProjectId('')
+                              setPayRef('')
+                              setError(null)
+                            }}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-success/10 text-success rounded text-xs font-bold hover:bg-success/20 transition-colors shadow-sm"
+                          >
+                            سداد المستخلص
+                          </button>
+                          <button
+                            onClick={() => setIsDraftPaymentOpen(true)}
+                            title="إصدار أمر دفع مركزي"
+                            className="inline-flex items-center justify-center w-7 h-7 bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors shadow-sm"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                            </svg>
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 )

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
 import { getProjectDashboardMetrics } from '@/actions/dashboards'
+import ProjectWorkInbox from '@/components/work-inbox/ProjectWorkInbox'
 
 type ProjectMetrics = Awaited<ReturnType<typeof getProjectDashboardMetrics>>
 type ProjectData = {
@@ -167,6 +168,11 @@ export default function ProjectDashboardClient({
                 </div>
             </div>
           </div>
+      </div>
+
+      {/* Project Work Inbox — pending items for this project */}
+      <div className="mt-6">
+        <ProjectWorkInbox projectId={projectId} />
       </div>
 
     </div>

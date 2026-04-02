@@ -76,9 +76,65 @@ export async function getProjectPayablesQueue(projectId: string) {
   }
 }
 
+// Fetch the Global "Payables Queue" (Unpaid or Partially Paid Documents) across ALL projects
+export async function getGlobalPayablesQueue() {
+  const supabase = createAdminClient() // use admin/service role to aggregate all data
+  
+  // 1. Supplier Invoices
+  const { data: supplierInvoices, error: supErr } = await supabase
+    .from('supplier_invoices')
+    .select(`
+      id, invoice_no, invoice_date, net_amount, returned_amount, outstanding_amount, paid_to_date, status, project_id,
+      supplier:supplier_party_id(id, arabic_name),
+      project:project_id(arabic_name)
+    `)
+    .in('status', ['posted', 'partially_paid'])
+
+  if (supErr) {
+    console.error("getGlobalPayablesQueue supErr:", supErr.message, 'code:', supErr.code);
+    return { supplier_invoices: [], subcontractor_certificates: [], company_invoices: [] }
+  }
+
+  // 2. Subcontractor Certificates
+  const { data: subCertificates, error: subErr } = await supabase
+    .from('subcontractor_certificates')
+    .select(`
+      id, certificate_no, certificate_date, net_amount, paid_to_date, outstanding_amount, status, project_id,
+      subcontractor_agreement:subcontract_agreement_id(
+        subcontractor:subcontractor_party_id(id, arabic_name)
+      ),
+      project:project_id(arabic_name)
+    `)
+    .in('status', ['approved'])
+
+  if (subErr) {
+    console.error("getGlobalPayablesQueue subErr:", subErr.message, 'code:', subErr.code);
+    return { supplier_invoices: supplierInvoices || [], subcontractor_certificates: [], company_invoices: [] }
+  }
+
+  // 3. Company Purchase Invoices
+  const { data: companyInvoices, error: compErr } = await supabase
+    .from('company_purchase_invoices')
+    .select(`
+      id, invoice_no, invoice_date, net_amount, returned_amount, outstanding_amount, paid_to_date, status, company_id,
+      supplier:supplier_party_id(id, arabic_name)
+    `)
+    .in('status', ['posted', 'partially_paid'])
+
+  if (compErr) {
+    console.error("getGlobalPayablesQueue compErr:", compErr.message);
+  }
+
+  return {
+    supplier_invoices: supplierInvoices || [],
+    subcontractor_certificates: subCertificates || [],
+    company_invoices: companyInvoices || []
+  }
+}
+
 // Execute Payment Voucher Draft (Creates the Voucher, links Party, and Drafts Allocations)
 export async function draftPaymentVoucher(payload: {
-  project_id: string
+  project_id?: string
   company_id: string
   payment_date: string
   payment_method: string
@@ -100,7 +156,7 @@ export async function draftPaymentVoucher(payload: {
     .from('payment_vouchers')
     .insert([{
       company_id: payload.company_id,
-      project_id: payload.project_id,
+      project_id: payload.project_id || null,
       voucher_no: voucherNo,
       payment_date: payload.payment_date,
       payment_method: payload.payment_method,
@@ -143,35 +199,157 @@ export async function draftPaymentVoucher(payload: {
     if (aErr) throw aErr
   }
 
-  // Auto-post the voucher immediately to complete the flow
+  await writeAuditLog({
+    action: 'payment_requested',
+    entity_type: 'payment_voucher',
+    entity_id: voucher.id,
+    description: `طلب دفع (قيد الانتظار) بمبلغ ${payload.total_amount} — طريقة: ${payload.payment_method}`,
+    metadata: { voucher_id: voucher.id, total_amount: payload.total_amount, payment_method: payload.payment_method, party_id: payload.party_id, project_id: payload.project_id, allocations_count: payload.allocations.length },
+  })
+
+  // Revalidate routes
+  revalidatePath(`/projects/${payload.project_id}/payments`)
+  revalidatePath(`/projects/${payload.project_id}/payments/queue`)
+  revalidatePath('/company/treasury/queue')
+  
+  return voucher.id
+}
+
+// -------------------------------------------------------------------
+// TREASURY EXECUTION — تنفيذ الدفعات من الإدارة المالية
+// -------------------------------------------------------------------
+
+export async function getTreasuryExecutionQueue() {
+  const supabase = createAdminClient()
+  const { data, error } = await supabase
+    .from('payment_vouchers')
+    .select(`
+      *,
+      project:project_id(arabic_name),
+      financial_account:financial_account_id(arabic_name, currency),
+      parties:payment_voucher_parties(
+        paid_amount,
+        party:party_id(arabic_name)
+      ),
+      created_by_user:users!payment_vouchers_created_by_fkey(display_name)
+    `)
+    .eq('status', 'draft')
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.error("getTreasuryExecutionQueue Error:", error.message);
+    return []
+  }
+  return data || []
+}
+
+export async function executeTreasuryPayment(voucherId: string, payload: {
+  financial_account_id?: string
+  attachment_urls?: string[]
+  notes?: string
+  executed_amount?: number
+}) {
+  const supabase = createAdminClient()
+  const userClient = createClient()
+  const { data: { user } } = await userClient.auth.getUser()
+
+  // 1. Get Voucher and its allocations
+  const { data: voucher, error: vErr } = await supabase.from('payment_vouchers').select('*').eq('id', voucherId).single()
+  if (vErr || !voucher) throw new Error('سند الصرف غير موجود')
+  if (voucher.status !== 'draft') throw new Error('لقد تم تنفيذ هذا السند مسبقاً')
+
+  // 2. Handle partial payment waterfall if executed amount is less than requested amount
+  let finalAmount = voucher.total_amount
+  if (payload.executed_amount && payload.executed_amount < voucher.total_amount && payload.executed_amount > 0) {
+      finalAmount = payload.executed_amount
+      
+      const { data: parties } = await supabase
+        .from('payment_voucher_parties')
+        .select('id, paid_amount, allocations:payment_allocations(id, allocated_amount)')
+        .eq('payment_voucher_id', voucherId)
+
+      let remainingDeficit = voucher.total_amount - finalAmount
+
+      if (parties && parties.length > 0) {
+        for (const party of parties) {
+          if (remainingDeficit <= 0) break
+
+          let newPartyPaid = party.paid_amount
+          // Reduce allocations first
+          if (party.allocations && party.allocations.length > 0) {
+            for (const alloc of party.allocations) {
+              if (remainingDeficit <= 0) break
+              const deduct = Math.min(alloc.allocated_amount, remainingDeficit)
+              const newAllocAmt = alloc.allocated_amount - deduct
+              remainingDeficit -= deduct
+              newPartyPaid -= deduct
+
+              await supabase.from('payment_allocations')
+                .update({ allocated_amount: newAllocAmt })
+                .eq('id', alloc.id)
+            }
+          } else {
+             // No allocations, just reduce party paid directly
+             const deduct = Math.min(party.paid_amount, remainingDeficit)
+             newPartyPaid -= deduct
+             remainingDeficit -= deduct
+          }
+
+          // Update party total
+          await supabase.from('payment_voucher_parties')
+            .update({ paid_amount: newPartyPaid })
+            .eq('id', party.id)
+        }
+      }
+  }
+
+  // 3. Update attachments, notes, total_amount and fallback account
+  const updates: any = {}
+  if (payload.attachment_urls && payload.attachment_urls.length > 0) updates.attachment_urls = payload.attachment_urls
+  if (payload.notes) updates.notes = payload.notes
+  if (payload.financial_account_id && payload.financial_account_id !== voucher.financial_account_id) {
+     updates.financial_account_id = payload.financial_account_id
+  }
+  if (finalAmount !== voucher.total_amount) {
+     updates.total_amount = finalAmount
+  }
+
+  if (Object.keys(updates).length > 0) {
+     const { error: upErr } = await supabase.from('payment_vouchers').update(updates).eq('id', voucherId)
+     if (upErr) throw new Error('فشل تحديث بيانات السند: ' + upErr.message)
+  }
+
+  const finalAccountId = payload.financial_account_id || voucher.financial_account_id
+  if (!finalAccountId) throw new Error('لا يمكن تنفيذ السند لعدم تحديد خزينة أو حساب بنكي')
+
+  // 4. Auto-post the voucher using RPC to trigger cash movements
   const { error: postErr } = await supabase.rpc('post_payment_voucher', {
-    p_voucher_id: voucher.id,
+    p_voucher_id: voucherId,
     p_user_id: user?.id
   })
   
-  if (postErr) throw postErr
+  if (postErr) throw new Error('فشل تنفيذ وسحب الرصيد: ' + postErr.message)
 
   await writeAuditLog({
-    action: 'payment_created',
+    action: 'payment_executed',
     entity_type: 'payment_voucher',
-    entity_id: voucher.id,
-    description: `تسجيل دفعة صرف بمبلغ ${payload.total_amount} — طريقة: ${payload.payment_method}`,
-    metadata: { voucher_id: voucher.id, total_amount: payload.total_amount, payment_method: payload.payment_method, party_id: payload.party_id, project_id: payload.project_id, allocations_count: payload.allocations.length },
+    entity_id: voucherId,
+    description: `تنفيذ واعتماد صرف مبلغ ${voucher.total_amount} من الخزينة`,
+    metadata: { voucher_id: voucherId, executed_account_id: finalAccountId, attachments_count: payload.attachment_urls?.length || 0 },
   })
-  
-  // Dual log: money was withdrawn from the Cashbox for this Payment Voucher
+
+  // Record money withdrawal audit specifically for the account
   await writeAuditLog({
     action: 'funds_withdrawn',
     entity_type: 'financial_account',
-    entity_id: payload.financial_account_id,
-    description: `صرف مدفوعات نقدية/بنكية بمبلغ ${payload.total_amount}`,
-    metadata: { payment_voucher_id: voucher.id, total_amount: payload.total_amount, reference_type: 'payment_voucher' },
+    entity_id: finalAccountId,
+    description: `صرف مدفوعات نقدية/بنكية بمبلغ ${voucher.total_amount}`,
+    metadata: { payment_voucher_id: voucherId, total_amount: voucher.total_amount, reference_type: 'payment_voucher' },
   })
 
-  revalidatePath(`/projects/${payload.project_id}/payments`)
-  revalidatePath(`/projects/${payload.project_id}/payments/queue`)
-  
-  return voucher.id
+  revalidatePath('/company/treasury/queue')
+  revalidatePath(`/projects/${voucher.project_id}/payments`)
+  revalidatePath(`/company/treasury/${finalAccountId}`)
 }
 
 // Fetch single payment voucher details including allocations

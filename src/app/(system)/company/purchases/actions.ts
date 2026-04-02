@@ -857,10 +857,11 @@ export async function getGlobalSupplierBalances() {
 
   const rawScopes: any[] = []
 
-  // 1. Process Company Invoices (Manual Grouping)
   const compMap: Record<string, any> = {}
   companyRes.data?.forEach(row => {
     const sId = row.supplier_party_id
+    if (!sId) return // Skip internal expenses that do not have a supplier
+    
     if (!compMap[sId]) {
       compMap[sId] = {
         supplier_party_id: sId,

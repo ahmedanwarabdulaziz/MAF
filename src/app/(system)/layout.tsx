@@ -11,7 +11,9 @@ import HeaderNav from "./HeaderNav";
 import SettingsMenu from "./SettingsMenu";
 import PurchaseRequestDialog from "@/components/procurement/PurchaseRequestDialog";
 import SupplierInvoiceDialog from "@/components/procurement/SupplierInvoiceDialog";
+import GlobalSearchBar from "@/components/layout/GlobalSearchBar";
 import { QueryProvider } from "@/providers/query-provider";
+import TopbarInboxButton from "@/components/work-inbox/TopbarInboxButton";
 
 async function getActiveProjects() {
   const supabase = createClient();
@@ -105,10 +107,9 @@ export default async function SystemLayout({
             />
           </div>
 
-          <div className="flex items-center gap-6 shrink-0 mr-4">
-            <div className="text-sm font-medium text-text-secondary cursor-pointer hover:text-primary">
-              الإشعارات
-            </div>
+          <div className="flex items-center gap-6 shrink-0 mr-4 relative w-full justify-end sm:w-auto">
+            <GlobalSearchBar />
+            <TopbarInboxButton />
           </div>
         </header>
 

@@ -603,7 +603,7 @@ The system should be built in this order:
 - Title: Payments and Treasury Screens
 - Difficulty: `L2`
 - Recommended Agent: `Antigravity`
-- Status: `Ready`
+- Status: `Done`
 - Goal: Build payment queue, payment voucher, treasury source, and proof-upload screens.
 - Inputs:
   - `system modules and navigation.md`

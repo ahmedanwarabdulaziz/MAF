@@ -32,6 +32,15 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
             مستخلصات المقاولين وفواتير الموردين المعتمدة والتي لم يتم سدادها بالكامل.
           </p>
         </div>
+        <Link
+          href={`/projects/${params.id}/payments/new`}
+          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          إصدار أمر دفع جديد للمقاول أو المورد
+        </Link>
       </div>
 
       {/* Summary Chips */}

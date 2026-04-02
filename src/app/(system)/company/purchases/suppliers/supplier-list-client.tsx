@@ -4,12 +4,15 @@ import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import GlobalAdvancePaymentModal from './GlobalAdvancePaymentModal'
 import VendorStatementModal from './VendorStatementModal'
+import GlobalDraftPaymentModal from './GlobalDraftPaymentModal'
 
 export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) {
   const [search, setSearch] = useState('')
   const [projectFilter, setProjectFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false)
+  const [draftPaymentPartyId, setDraftPaymentPartyId] = useState<string | null>(null)
+  const [isDraftPaymentOpen, setIsDraftPaymentOpen] = useState(false)
   const [statementVendorId, setStatementVendorId] = useState<string | null>(null)
 
   const fmt = (n: number) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2 })
@@ -92,6 +95,14 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
         isOpen={isAdvanceModalOpen} 
         onClose={() => setIsAdvanceModalOpen(false)} 
       />
+      <GlobalDraftPaymentModal 
+        isOpen={isDraftPaymentOpen}
+        onClose={() => {
+            setIsDraftPaymentOpen(false)
+            setDraftPaymentPartyId(null)
+        }}
+        initialPartyId={draftPaymentPartyId}
+      />
 
       {/* Page Header with Main Actions */}
       <div className="flex flex-col md:flex-row gap-4 md:items-center justify-between">
@@ -99,15 +110,26 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
           <h1 className="text-2xl font-bold text-navy">مركز حسابات الموردين والمقاولين المجمع</h1>
           <p className="text-sm text-text-secondary mt-1">توضح هذه الشاشة ملخص كشوف حسابات الموردين الإجمالية عبر كافة مشاريع الشركة والمركز الرئيسي.</p>
         </div>
-        <button
-          onClick={() => setIsAdvanceModalOpen(true)}
-          className="px-6 py-2.5 rounded-lg bg-green-600 text-white font-bold text-sm hover:bg-green-700 hover:shadow-lg hover:shadow-green-600/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          صرف دفعة مقدمة للمقاول / المورد
-        </button>
+        <div className="flex items-center gap-3 shrink-0 flex-wrap">
+          <button
+            onClick={() => setIsDraftPaymentOpen(true)}
+            className="px-6 py-2.5 rounded-lg bg-primary text-white font-bold text-sm hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            إصدار أمر دفع مركزي
+          </button>
+          <button
+            onClick={() => setIsAdvanceModalOpen(true)}
+            className="px-6 py-2.5 rounded-lg bg-green-600 text-white font-bold text-sm hover:bg-green-700 hover:shadow-lg hover:shadow-green-600/20 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} className="w-5 h-5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+            </svg>
+            صرف دفعة مقدمة
+          </button>
+        </div>
       </div>
 
       {/* Top Header Card Container */}
@@ -293,15 +315,29 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
                   </span>
                 </td>
                 <td className="px-5 py-4 text-left">
-                  <button
-                    onClick={() => setStatementVendorId(sup.id)}
-                    title="كشف حساب تفصيلي"
-                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary/5 text-primary hover:bg-primary/10 hover:shadow-sm transition-all border border-primary/10"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-                    </svg>
-                  </button>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => {
+                        setDraftPaymentPartyId(sup.id)
+                        setIsDraftPaymentOpen(true)
+                      }}
+                      title="إصدار أمر دفع مركزي"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-green-50 text-green-600 hover:bg-green-100 hover:shadow-sm transition-all border border-green-200"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setStatementVendorId(sup.id)}
+                      title="كشف حساب تفصيلي"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-primary/5 text-primary hover:bg-primary/10 hover:shadow-sm transition-all border border-primary/10"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                      </svg>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

@@ -60,6 +60,15 @@ export default function ProjectPaymentsPage({ params, vouchers }: { params: { id
           >
             الاستحقاقات المعلقة
           </Link>
+          <Link
+            href={`/projects/${params.id}/payments/new`}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 transition-colors flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            إصدار أمر دفع جديد
+          </Link>
         </div>
       </div>
 

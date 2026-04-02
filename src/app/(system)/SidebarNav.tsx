@@ -187,9 +187,16 @@ export default function SidebarNav({ isSuperAdmin, allowedModules, companyName }
       )}
 
       {can('treasury') && (
-        <Link href="/company/treasury" className={`${linkBase} ${isActive('/company/treasury') && !isActive('/company/treasury/expense-categories') ? linkActive : linkInactive}`}>
-          الخزينة والحسابات
-        </Link>
+        <>
+          <div className={subLabel}>الخزانة والتنفيذ</div>
+          <Link href="/company/treasury" className={`${linkBase} ${isActive('/company/treasury') && !isActive('/company/treasury/expense-categories') && !isActive('/company/treasury/queue') ? linkActive : linkInactive}`}>
+            الخزينة والحسابات
+          </Link>
+          <Link href="/company/treasury/queue" className={`${linkBase} flex items-center justify-between ${isActive('/company/treasury/queue') ? linkActive : linkInactive}`}>
+            <span>تنفيذ المدفوعات (Queue)</span>
+            <span className="bg-success/20 text-success-dark text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center justify-center">⏳</span>
+          </Link>
+        </>
       )}
 
       {can('corporate_expenses') && (
