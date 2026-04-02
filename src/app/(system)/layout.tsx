@@ -11,6 +11,7 @@ import HeaderNav from "./HeaderNav";
 import SettingsMenu from "./SettingsMenu";
 import PurchaseRequestDialog from "@/components/procurement/PurchaseRequestDialog";
 import SupplierInvoiceDialog from "@/components/procurement/SupplierInvoiceDialog";
+import { QueryProvider } from "@/providers/query-provider";
 
 async function getActiveProjects() {
   const supabase = createClient();
@@ -112,11 +113,13 @@ export default async function SystemLayout({
         </header>
 
         <main className="flex-1 overflow-y-auto bg-background-secondary p-8">
-          <React.Suspense fallback={null}>
-            <PurchaseRequestDialog />
-            <SupplierInvoiceDialog />
-          </React.Suspense>
-          {children}
+          <QueryProvider>
+            <React.Suspense fallback={null}>
+              <PurchaseRequestDialog />
+              <SupplierInvoiceDialog />
+            </React.Suspense>
+            {children}
+          </QueryProvider>
         </main>
       </div>
     </div>
