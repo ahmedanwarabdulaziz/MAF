@@ -4,7 +4,7 @@ CREATE OR REPLACE VIEW vw_project_financial_summary AS
 SELECT 
     p.id AS project_id,
     p.arabic_name,
-    COALESCE(b.total_estimated_cost, 0) AS budget,
+    COALESCE(p.estimated_contract_value, 0) AS budget,
     COALESCE(ob.total_billed, 0) AS billed,
     COALESCE(ob.total_collected, 0) AS collected,
     COALESCE(sup.total_cost, 0) AS sup_cost,
@@ -12,11 +12,6 @@ SELECT
     COALESCE(sub.total_cost, 0) AS sub_cost,
     COALESCE(sub.total_paid, 0) AS sub_paid
 FROM projects p
-LEFT JOIN (
-    SELECT project_id, total_estimated_cost 
-    FROM project_budget_versions 
-    WHERE is_active = true
-) b ON b.project_id = p.id
 LEFT JOIN (
     SELECT project_id, SUM(amount) AS total_billed, SUM(collected_amount) AS total_collected
     FROM owner_billing_certificates
