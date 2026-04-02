@@ -483,6 +483,7 @@ export async function recordOwnerCollection(payload: {
         reference_id:         collection?.id || null,
         notes:                txNote,
         created_by:           user?.id,
+        project_id:           payload.project_id,
         counterpart_name:     `المالك: ${owner?.arabic_name || 'غير محدد'}`,
       })
 

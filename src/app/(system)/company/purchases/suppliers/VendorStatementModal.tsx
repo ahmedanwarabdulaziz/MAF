@@ -253,21 +253,21 @@ export default function VendorStatementModal({
   const totalOutstandingScope = useMemo(() => {
     if (bulkScope === 'company') {
       return companyInvoices
-        .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
-        .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)), 0)
+        .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)) > 0)
+        .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)), 0)
     } else if (bulkScope) {
       return projectInvoices
-        .filter(i => i.project_id === bulkScope && ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
-        .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)), 0)
+        .filter(i => i.project_id === bulkScope && ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)) > 0)
+        .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)), 0)
     }
     return 0
   }, [bulkScope, companyInvoices, projectInvoices])
 
   const totalOutstandingCompany = companyInvoices
-    .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
-    .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)), 0)
+    .filter(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)) > 0)
+    .reduce((sum, i) => sum + Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)), 0)
 
-  const hasAnyProjectOutstanding = projectInvoices.some(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0)) > 0)
+  const hasAnyProjectOutstanding = projectInvoices.some(i => ['posted', 'partially_paid'].includes(i.status) && Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0)) > 0)
 
   const handlePay = (e: React.FormEvent) => {
     e.preventDefault()
@@ -275,7 +275,7 @@ export default function VendorStatementModal({
     if (!payAccountId) return setError('يرجى اختيار حساب الخزينة/البنك')
     
     const inv = companyInvoices.find(i => i.id === payInvoiceId)
-    const maxAmt = inv ? Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0)) : 0
+    const maxAmt = inv ? Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0)) : 0
     if (payAmount <= 0 || payAmount > maxAmt) return setError('المبلغ المدخل غير صالح')
 
     setError(null)
@@ -353,7 +353,7 @@ export default function VendorStatementModal({
     if (!payAccountId) return setError('يرجى اختيار الحساب')
     
     const cert = certificates.find(c => c.id === payCertId)
-    const maxAmt = cert ? Math.max(0, Number(cert.net_amount) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0)) : 0
+    const maxAmt = cert ? Math.max(0, Number(cert.net_amount) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0) - Number(cert.pending_draft_amount || 0)) : 0
     if (payAmount <= 0 || payAmount > maxAmt) return setError('المبلغ المدخل غير صالح')
 
     setError(null)
@@ -389,7 +389,7 @@ export default function VendorStatementModal({
     const list: { id: string, type: 'company_purchase_invoice'|'supplier_invoice'|'subcontractor_certificate', title: string, outstanding: number, projectId: string | null }[] = []
     
     companyInvoices.forEach(i => {
-      const realOutstanding = Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0))
+      const realOutstanding = Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0))
       if (i.status !== 'paid' && realOutstanding > 0) {
         list.push({
           id: i.id,
@@ -402,7 +402,7 @@ export default function VendorStatementModal({
     })
 
     projectInvoices.forEach(i => {
-      const realOutstanding = Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0))
+      const realOutstanding = Math.max(0, Number(i.net_amount) - Number(i.returned_amount || 0) - Number(i.paid_to_date || 0) - Number(i.pending_draft_amount || 0))
       if (i.status !== 'paid' && realOutstanding > 0) {
         list.push({
           id: i.id,
@@ -415,7 +415,7 @@ export default function VendorStatementModal({
     })
 
     ;(certificates || []).forEach(c => {
-      const realOutstanding = Math.max(0, Number(c.net_amount) - Number(c.returned_amount || 0) - Number(c.paid_to_date || 0))
+      const realOutstanding = Math.max(0, Number(c.net_amount) - Number(c.returned_amount || 0) - Number(c.paid_to_date || 0) - Number(c.pending_draft_amount || 0))
       if (c.status !== 'paid' && realOutstanding > 0) {
         list.push({
           id: c.id,

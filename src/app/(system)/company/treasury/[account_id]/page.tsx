@@ -56,12 +56,19 @@ export default async function TreasuryAccountDetailPage({
 
   const allTransactions = await getAccountTransactions(params.account_id)
 
-  // Filter client-side by date range
+  // Filter client-side by date range and guarantee strict sorting
   const transactions = allTransactions?.filter((tx: any) => {
     const txDate = new Date(tx.transaction_date)
     if (dateRange.from && txDate < new Date(dateRange.from)) return false
     if (dateRange.to   && txDate > new Date(dateRange.to))   return false
     return true
+  }).sort((a: any, b: any) => {
+    const dateA = new Date(a.transaction_date).getTime();
+    const dateB = new Date(b.transaction_date).getTime();
+    if (dateA !== dateB) return dateB - dateA; // Descending date
+    const timeA = new Date(a.created_at).getTime();
+    const timeB = new Date(b.created_at).getTime();
+    return timeB - timeA; // Descending time
   }) ?? []
 
   const accountTypeMap: Record<string, string> = {
@@ -175,7 +182,12 @@ export default async function TreasuryAccountDetailPage({
               <tbody className="divide-y divide-border">
                 {transactions.map((tx: any) => (
                   <tr key={tx.id} className="hover:bg-background-secondary/50 transition-colors">
-                    <td className="px-6 py-4 text-text-secondary" dir="ltr">{tx.transaction_date}</td>
+                    <td className="px-6 py-4 text-text-secondary whitespace-nowrap" dir="ltr">
+                      <div className="font-medium text-navy">{tx.transaction_date}</div>
+                      <div className="text-xs opacity-70 mt-0.5">
+                        {new Date(tx.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         tx.transaction_type === 'deposit' ? 'bg-success/10 text-success-dark' : 'bg-danger/10 text-danger'
@@ -201,7 +213,9 @@ export default async function TreasuryAccountDetailPage({
                             {tx.project?.arabic_name || 'مشروع محذوف'}
                           </span>
                         ) : (
-                          <span className="text-text-secondary text-xs">-</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-purple-500/10 text-purple-700 text-xs font-bold">
+                            الشركة الرئيسية
+                          </span>
                         )}
                       </td>
                     )}

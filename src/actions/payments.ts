@@ -125,10 +125,36 @@ export async function getGlobalPayablesQueue() {
     console.error("getGlobalPayablesQueue compErr:", compErr.message);
   }
 
+  // 4. Calculate Pending Draft Allocations
+  const pendingMap: Record<string, number> = {}
+  const { data: draftVouchers } = await supabase.from('payment_vouchers').select('id').eq('status', 'draft')
+  
+  if (draftVouchers && draftVouchers.length > 0) {
+    const draftVoucherIds = draftVouchers.map(v => v.id)
+    const { data: draftParties } = await supabase.from('payment_voucher_parties').select('id').in('payment_voucher_id', draftVoucherIds)
+    
+    if (draftParties && draftParties.length > 0) {
+      const partyIds = draftParties.map(p => p.id)
+      const { data: allocs } = await supabase.from('payment_allocations').select('source_entity_id, allocated_amount').in('payment_voucher_party_id', partyIds)
+      
+      if (allocs) {
+        allocs.forEach(a => {
+          pendingMap[a.source_entity_id] = (pendingMap[a.source_entity_id] || 0) + Number(a.allocated_amount || 0)
+        })
+      }
+    }
+  }
+
+  // Attach pending_draft_amount to each document
+  const attachPending = (docs: any[]) => docs.map(doc => ({
+    ...doc,
+    pending_draft_amount: pendingMap[doc.id] || 0
+  }))
+
   return {
-    supplier_invoices: supplierInvoices || [],
-    subcontractor_certificates: subCertificates || [],
-    company_invoices: companyInvoices || []
+    supplier_invoices: attachPending(supplierInvoices || []),
+    subcontractor_certificates: attachPending(subCertificates || []),
+    company_invoices: attachPending(companyInvoices || [])
   }
 }
 

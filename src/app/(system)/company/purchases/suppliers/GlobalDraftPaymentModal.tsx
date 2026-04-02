@@ -98,7 +98,8 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                 net_amount: Number(inv.net_amount || 0),
                 returned_amount: Number(inv.returned_amount || 0),
                 paid_to_date: Number(inv.paid_to_date || 0),
-                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0))
+                pending_draft: Number(inv.pending_draft_amount || 0),
+                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0))
             }))
         const compDocs = payablesQueue.company_invoices
             .filter((inv: any) => inv.supplier?.id === selectedParty.id)
@@ -112,7 +113,8 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                 net_amount: Number(inv.net_amount || 0),
                 returned_amount: Number(inv.returned_amount || 0),
                 paid_to_date: Number(inv.paid_to_date || 0),
-                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0))
+                pending_draft: Number(inv.pending_draft_amount || 0),
+                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0))
             }))
         return [...projDocs, ...compDocs]
     } else {
@@ -128,7 +130,8 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                 net_amount: Number(cert.net_amount || 0),
                 returned_amount: Number(cert.returned_amount || 0),
                 paid_to_date: Number(cert.paid_to_date || 0),
-                amount: Math.max(0, Number(cert.net_amount || 0) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0))
+                pending_draft: Number(cert.pending_draft_amount || 0),
+                amount: Math.max(0, Number(cert.net_amount || 0) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0) - Number(cert.pending_draft_amount || 0))
             }))
     }
   }, [selectedParty, payablesQueue])
@@ -370,6 +373,7 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                                           <th className="py-3 px-4 font-semibold text-text-secondary">الإجمالي</th>
                                           <th className="py-3 px-4 font-semibold text-purple-700">المرتجع/مخصوم</th>
                                           <th className="py-3 px-4 font-semibold text-success">مسدد سابقاً</th>
+                                          <th className="py-3 px-4 font-semibold text-orange-600">بانتظار الخزينة</th>
                                           <th className="py-3 px-4 font-semibold text-danger">متبقي (يوزع الآن)</th>
                                           <th className="py-3 px-4 w-40 font-semibold text-text-secondary">المسدد في هذا السند</th>
                                       </tr>
@@ -383,6 +387,7 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                                               <td className="py-3 px-4 font-medium text-gray-500" dir="ltr">{doc.net_amount?.toLocaleString() || '0'}</td>
                                               <td className="py-3 px-4 font-medium text-purple-700" dir="ltr">{doc.returned_amount > 0 ? doc.returned_amount.toLocaleString() : '—'}</td>
                                               <td className="py-3 px-4 font-medium text-success" dir="ltr">{doc.paid_to_date > 0 ? doc.paid_to_date.toLocaleString() : '0'}</td>
+                                              <td className="py-3 px-4 font-medium text-orange-600" dir="ltr">{doc.pending_draft > 0 ? Array.from('🕒 ').join('') + doc.pending_draft.toLocaleString() : '0'}</td>
                                               <td className="py-3 px-4 font-bold text-danger" dir="ltr">{doc.amount.toLocaleString()}</td>
                                               <td className="py-3 px-4">
                                                   <input
