@@ -53,22 +53,35 @@ export default function PaymentWizard({ projectId, accounts, payablesQueue }: {
     if (selectedParty.type === 'supplier') {
         return payablesQueue.supplier_invoices
             .filter((inv: any) => inv.supplier?.id === selectedParty.id)
-            .map((inv: any) => ({
-                id: inv.id, 
-                type: 'supplier_invoice', 
-                no: inv.invoice_no, 
-                date: inv.invoice_date,
-                amount: Number(inv.net_amount) - Number(inv.paid_to_date || 0)
-            }))
+            .map((inv: any) => {
+                // Use payable_limit if present (3-Way Match Guard), otherwise full outstanding
+                const outstanding     = Number(inv.net_amount) - Number(inv.paid_to_date || 0)
+                const payable_limit   = inv.payable_limit !== undefined ? Number(inv.payable_limit) : outstanding
+                return {
+                    id: inv.id,
+                    type: 'supplier_invoice',
+                    no: inv.invoice_no,
+                    date: inv.invoice_date,
+                    amount: payable_limit,            // ← الحد المسموح بسداده
+                    full_outstanding: outstanding,     // ← الإجمالي الكامل (للعرض)
+                    advance_amount: inv.advance_amount || 0,
+                    has_partial_receipt: !!inv.has_partial_receipt,
+                    is_legacy: !!inv.is_legacy,
+                }
+            })
     } else {
          return payablesQueue.subcontractor_certificates
             .filter((cert: any) => cert.subcontractor_agreement?.subcontractor?.id === selectedParty.id)
             .map((cert: any) => ({
-                id: cert.id, 
-                type: 'subcontractor_certificate', 
-                no: cert.certificate_no, 
+                id: cert.id,
+                type: 'subcontractor_certificate',
+                no: cert.certificate_no,
                 date: cert.certificate_date,
-                amount: Number(cert.outstanding_amount || 0)
+                amount: Number(cert.outstanding_amount || 0),
+                full_outstanding: Number(cert.outstanding_amount || 0),
+                advance_amount: 0,
+                has_partial_receipt: false,
+                is_legacy: true,
             }))
     }
   }, [selectedParty, payablesQueue])
@@ -303,16 +316,36 @@ export default function PaymentWizard({ projectId, accounts, payablesQueue }: {
                             <tr>
                                 <th className="py-3 px-4 font-semibold text-text-secondary">المستند</th>
                                 <th className="py-3 px-4 font-semibold text-text-secondary">التاريخ</th>
-                                <th className="py-3 px-4 font-semibold text-text-secondary">الرصيد المستحق (متبقي)</th>
+                                <th className="py-3 px-4 font-semibold text-text-secondary">الحد المسموح بسداده</th>
                                 <th className="py-3 px-4 w-40 font-semibold text-text-secondary">قيمة الخصم / السداد</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
                             {selectedPartyDocs.map((doc: any) => (
-                                <tr key={doc.id} className="hover:bg-black/5 transition-colors">
-                                    <td className="py-3 px-4 font-medium text-text-primary" dir="ltr">{doc.no}</td>
+                                <tr key={doc.id} className={`hover:bg-black/5 transition-colors ${doc.has_partial_receipt ? 'bg-amber-50/40' : ''}`}>
+                                    <td className="py-3 px-4 font-medium text-text-primary" dir="ltr">
+                                        <div className="flex flex-col gap-0.5">
+                                            <span>{doc.no}</span>
+                                            {doc.has_partial_receipt && (
+                                                <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5 w-fit">
+                                                    ⚠️ استلام جزئي
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="py-3 px-4 text-text-secondary" dir="ltr">{doc.date}</td>
-                                    <td className="py-3 px-4 font-bold text-danger" dir="ltr">{doc.amount.toLocaleString()}</td>
+                                    <td className="py-3 px-4" dir="ltr">
+                                        <div className="flex flex-col gap-0.5">
+                                            <span className={`font-bold ${doc.has_partial_receipt ? 'text-amber-700' : 'text-danger'}`}>
+                                                {doc.amount.toLocaleString()}
+                                            </span>
+                                            {doc.has_partial_receipt && doc.advance_amount > 0 && (
+                                                <span className="text-xs text-blue-600">
+                                                    + {doc.advance_amount.toLocaleString()} كدفعة مقدمة
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="py-3 px-4">
                                         <input
                                             type="number"

@@ -113,11 +113,13 @@ export default async function SupplierInvoicesList({ params, searchParams }: { p
                         <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium w-max ${
                           inv.status === 'posted' && inv.discrepancy_status === 'pending' ? 'bg-indigo-100 text-indigo-700' :
                           inv.status === 'posted' ? 'bg-success/10 text-success' : 
+                          inv.status === 'partially_paid' ? 'bg-orange-100 text-orange-700' :
                           inv.status === 'pending_receipt' ? 'bg-amber-100 text-amber-700' :
                           'bg-text-tertiary/10 text-text-secondary'
                         }`}>
                           {inv.status === 'draft' ? 'تحت التجهيز (مسودة)' :
                            inv.status === 'pending_receipt' ? 'بانتظار استلام المخزن والمدير' :
+                           inv.status === 'partially_paid' ? 'مسدد جزئياً (يوجد رصيد)' :
                            inv.status === 'posted' && inv.discrepancy_status === 'pending' ? 'مستلم جزئياً (يوجد نواقص)' :
                            inv.status === 'posted' ? 'تم الاستلام والاعتماد' : inv.status}
                         </span>

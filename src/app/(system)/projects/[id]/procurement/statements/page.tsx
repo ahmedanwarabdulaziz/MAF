@@ -1,23 +1,63 @@
 import { createClient } from '@/lib/supabase-server'
-import Link from 'next/link'
 
 export default async function SupplierStatementsList({ params }: { params: { id: string } }) {
   const supabase = createClient()
 
-  // Natively query the view created in Phase 12
-  const { data: accounts, error } = await supabase
-    .from('supplier_account_summaries_view')
-    .select('*')
+// Direct query on supplier_invoices — view was excluding partially_paid status
+  const { data: invoices, error } = await supabase
+    .from('supplier_invoices')
+    .select(`
+      id,
+      supplier_party_id,
+      net_amount,
+      paid_to_date,
+      outstanding_amount,
+      returned_amount,
+      status,
+      discrepancy_status,
+      supplier:supplier_party_id(id, arabic_name)
+    `)
     .eq('project_id', params.id)
-    .order('total_outstanding', { ascending: false })
+    .in('status', ['posted', 'partially_paid', 'paid'])
+
+  // Aggregate per supplier
+  const supplierMap: Record<string, any> = {}
+  invoices?.forEach(inv => {
+    const sId = inv.supplier_party_id
+    if (!sId) return
+    const sup: any = Array.isArray(inv.supplier) ? inv.supplier[0] : inv.supplier
+    if (!supplierMap[sId]) {
+      supplierMap[sId] = {
+        supplier_party_id: sId,
+        supplier_name: sup?.arabic_name || 'غير معروف',
+        total_invoiced_net: 0,
+        total_paid: 0,
+        total_outstanding: 0,
+        total_returned_net: 0,
+        has_pending_discrepancies: false,
+      }
+    }
+    const g = supplierMap[sId]
+    g.total_invoiced_net  += Number(inv.net_amount || 0)
+    g.total_paid          += Number(inv.paid_to_date || 0)
+    
+    // حساب المتبقي مباشرةً = الصافي - المسدد (لا نعتمد على outstanding_amount لأنه قد لا يُحدَّث فورياً)
+    g.total_outstanding   += Math.max(0, Number(inv.net_amount || 0) - Number(inv.paid_to_date || 0))
+    g.total_returned_net  += Number(inv.returned_amount || 0)
+    if (inv.discrepancy_status === 'pending') {
+      g.has_pending_discrepancies = true
+    }
+  })
+
+  const accounts = Object.values(supplierMap).sort((a, b) => b.total_outstanding - a.total_outstanding)
 
   let sysTotalBilled = 0
   let sysTotalPaid = 0
   let sysTotalOutstanding = 0
 
-  accounts?.forEach(a => {
-    sysTotalBilled += Number(a.total_invoiced_net)
-    sysTotalPaid += Number(a.total_paid)
+  accounts.forEach(a => {
+    sysTotalBilled      += Number(a.total_invoiced_net)
+    sysTotalPaid        += Number(a.total_paid)
     sysTotalOutstanding += Number(a.total_outstanding)
   })
 
@@ -65,9 +105,18 @@ export default async function SupplierStatementsList({ params }: { params: { id:
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {accounts?.map((acc: any) => (
+                {accounts.map((acc: any) => (
                   <tr key={acc.supplier_party_id} className="hover:bg-background-secondary/50 transition-colors">
-                    <td className="px-4 py-4 font-bold text-text-primary whitespace-nowrap">{acc.supplier_name}</td>
+                    <td className="px-4 py-4 font-bold text-text-primary whitespace-nowrap">
+                      <div className="flex flex-col gap-1">
+                        <span>{acc.supplier_name}</span>
+                        {acc.has_pending_discrepancies && (
+                          <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full w-max mt-0.5">
+                            يوجد نواقص استلام
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     
                     <td className="px-4 py-4 text-navy font-bold dir-ltr text-right">
                       {Number(acc.total_invoiced_net).toLocaleString()} ج.م
@@ -81,8 +130,10 @@ export default async function SupplierStatementsList({ params }: { params: { id:
                       {Number(acc.total_paid).toLocaleString()} ج.م
                     </td>
                     
-                    <td className="px-4 py-4 text-danger font-black dir-ltr text-right">
-                      {Number(acc.total_outstanding).toLocaleString()} ج.م
+                    <td className="px-4 py-4 font-black dir-ltr text-right">
+                      <span className={Number(acc.total_outstanding) > 0 ? 'text-danger' : 'text-text-secondary'}>
+                        {Number(acc.total_outstanding).toLocaleString()} ج.م
+                      </span>
                     </td>
                   </tr>
                 ))}

@@ -141,43 +141,82 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
                   <th className="px-6 py-4 font-semibold text-text-secondary">تاريخ الفاتورة</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">الصافي الكلي</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">المدفوعات السابقة</th>
-                  <th className="px-6 py-4 font-semibold text-text-secondary">المبلغ المستحق للدفع</th>
+                  <th className="px-6 py-4 font-semibold text-text-secondary">الحد المسموح بسداده</th>
                   <th className="px-6 py-4 font-semibold text-text-secondary">الحالة</th>
                   <th className="px-6 py-4 w-16">إجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {supplier_invoices.map((inv: any) => (
-                  <tr key={inv.id} className="hover:bg-background-secondary transition-colors">
-                    <td className="px-6 py-4 font-bold text-secondary">
-                        {inv.supplier?.arabic_name || 'مجهول'}
-                    </td>
-                    <td className="px-6 py-4 font-medium text-text-primary" dir="ltr">
-                        {inv.invoice_no}
-                    </td>
-                    <td className="px-6 py-4 text-text-secondary" dir="ltr">
-                        {inv.invoice_date}
-                    </td>
-                    <td className="px-6 py-4 text-text-secondary font-medium" dir="ltr">
-                        {Number(inv.net_amount).toLocaleString()} EGP
-                    </td>
-                    <td className="px-6 py-4 text-text-secondary" dir="ltr">
-                        {Number(inv.paid_to_date || 0).toLocaleString()} EGP
-                    </td>
-                    <td className="px-6 py-4 font-bold text-danger" dir="ltr">
-                        {calcOutstandingSup(inv).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP
-                    </td>
-                    <td className="px-6 py-4">
-                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            inv.status === 'partially_paid' ? 'bg-amber-100 text-amber-800' : 'bg-secondary/10 text-secondary'
-                        }`}>
-                            {inv.status === 'partially_paid' ? 'مدفوع جزئياً' : 'مرحّلة (قيد الدفع)'}
-                        </span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                        <SupplierInvoiceRowActions inv={inv} projectId={params.id} canApprove={false} canWhApprove={false} confirmation={null} />
-                    </td>
-                  </tr>
+                  <>
+                    <tr key={inv.id} className={`hover:bg-background-secondary transition-colors ${inv.has_partial_receipt ? 'bg-amber-50/50' : ''}`}>
+                      <td className="px-6 py-4 font-bold text-secondary">
+                          {inv.supplier?.arabic_name || 'مجهول'}
+                      </td>
+                      <td className="px-6 py-4 font-medium text-text-primary" dir="ltr">
+                          {inv.invoice_no}
+                      </td>
+                      <td className="px-6 py-4 text-text-secondary" dir="ltr">
+                          {inv.invoice_date}
+                      </td>
+                      <td className="px-6 py-4 text-text-secondary font-medium" dir="ltr">
+                          {Number(inv.net_amount).toLocaleString()} EGP
+                      </td>
+                      <td className="px-6 py-4 text-text-secondary" dir="ltr">
+                          {Number(inv.paid_to_date || 0).toLocaleString()} EGP
+                      </td>
+                      <td className="px-6 py-4" dir="ltr">
+                        {inv.has_partial_receipt ? (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-bold text-amber-700">
+                              {Number(inv.payable_limit).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP
+                            </span>
+                            {inv.advance_amount > 0 && (
+                              <span className="text-xs text-blue-600 font-medium">
+                                + {Number(inv.advance_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} كدفعة مقدمة
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="font-bold text-danger">
+                            {calcOutstandingSup(inv).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium w-fit ${
+                              inv.status === 'partially_paid' ? 'bg-amber-100 text-amber-800' : 'bg-secondary/10 text-secondary'
+                          }`}>
+                              {inv.status === 'partially_paid' ? 'مدفوع جزئياً' : 'مرحّلة (قيد الدفع)'}
+                          </span>
+                          {inv.has_partial_receipt && (
+                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 w-fit">
+                              ⚠️ استلام جزئي
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                          <SupplierInvoiceRowActions inv={inv} projectId={params.id} canApprove={false} canWhApprove={false} confirmation={null} />
+                      </td>
+                    </tr>
+                    {inv.has_partial_receipt && (
+                      <tr key={`${inv.id}-warning`} className="bg-amber-50 border-b-0">
+                        <td colSpan={8} className="px-6 py-2">
+                          <div className="flex items-center gap-3 text-xs text-amber-800 bg-amber-100 rounded-md px-3 py-2">
+                            <span className="text-base">⚠️</span>
+                            <span>
+                              <strong>استلام جزئي من المخزن:</strong>{' '}
+                              المستلم فعلاً {Number(inv.received_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP من أصل {Number(inv.net_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP.
+                              {' '}الحد المسموح بسداده الآن <strong>{Number(inv.payable_limit).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP</strong>.
+                              {inv.advance_amount > 0 && <> لسداد الباقي ({Number(inv.advance_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} EGP) سجّله كدفعة مقدمة للمورد.</>}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 ))}
               </tbody>
             </table>
@@ -188,3 +227,4 @@ export default async function ProjectPayablesQueuePage({ params }: { params: { i
     </div>
   )
 }
+

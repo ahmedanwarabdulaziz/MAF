@@ -88,25 +88,40 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
     if (selectedParty.type === 'supplier') {
         const projDocs = payablesQueue.supplier_invoices
             .filter((inv: any) => inv.supplier?.id === selectedParty.id)
-            .map((inv: any) => ({
-                id: inv.id, 
-                type: 'supplier_invoice', 
-                no: inv.invoice_no, 
-                project: inv.project?.arabic_name || '',
-                date: inv.invoice_date,
-                project_id: inv.project_id,
-                net_amount: Number(inv.net_amount || 0),
-                returned_amount: Number(inv.returned_amount || 0),
-                paid_to_date: Number(inv.paid_to_date || 0),
-                pending_draft: Number(inv.pending_draft_amount || 0),
-                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0))
-            }))
+            .map((inv: any) => {
+                const netAmt     = Number(inv.net_amount || 0)
+                const retAmt     = Number(inv.returned_amount || 0)
+                const paidAmt    = Number(inv.paid_to_date || 0)
+                const pendingAmt = Number(inv.pending_draft_amount || 0)
+                const outstanding = Math.max(0, netAmt - retAmt - paidAmt - pendingAmt)
+                // 3-Way Match: use payable_limit if computed (new invoices), else full outstanding
+                const payable_limit = inv.payable_limit !== undefined
+                    ? Math.max(0, Number(inv.payable_limit) - pendingAmt)
+                    : outstanding
+                return {
+                    id: inv.id,
+                    type: 'supplier_invoice',
+                    no: inv.invoice_no,
+                    project: inv.project?.arabic_name || '',
+                    date: inv.invoice_date,
+                    project_id: inv.project_id,
+                    net_amount: netAmt,
+                    returned_amount: retAmt,
+                    paid_to_date: paidAmt,
+                    pending_draft: pendingAmt,
+                    amount: payable_limit,            // ← الحد المسموح بسداده
+                    full_outstanding: outstanding,     // ← للعرض فقط
+                    advance_amount: Number(inv.advance_amount || 0),
+                    has_partial_receipt: !!inv.has_partial_receipt,
+                    is_legacy: !!inv.is_legacy,
+                }
+            })
         const compDocs = payablesQueue.company_invoices
             .filter((inv: any) => inv.supplier?.id === selectedParty.id)
             .map((inv: any) => ({
-                id: inv.id, 
-                type: 'company_purchase_invoice', 
-                no: inv.invoice_no, 
+                id: inv.id,
+                type: 'company_purchase_invoice',
+                no: inv.invoice_no,
                 project: 'إدارة مركزية',
                 date: inv.invoice_date,
                 project_id: null,
@@ -114,15 +129,19 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                 returned_amount: Number(inv.returned_amount || 0),
                 paid_to_date: Number(inv.paid_to_date || 0),
                 pending_draft: Number(inv.pending_draft_amount || 0),
-                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0))
+                amount: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0)),
+                full_outstanding: Math.max(0, Number(inv.net_amount || 0) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0) - Number(inv.pending_draft_amount || 0)),
+                advance_amount: 0,
+                has_partial_receipt: false,
+                is_legacy: true,
             }))
         return [...projDocs, ...compDocs]
     } else {
          return payablesQueue.subcontractor_certificates
             .filter((cert: any) => cert.subcontractor_agreement?.subcontractor?.id === selectedParty.id)
             .map((cert: any) => ({
-                id: cert.id, 
-                type: 'subcontractor_certificate', 
+                id: cert.id,
+                type: 'subcontractor_certificate',
                 no: cert.certificate_no,
                 project: cert.project?.arabic_name || '',
                 date: cert.certificate_date,
@@ -131,7 +150,11 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                 returned_amount: Number(cert.returned_amount || 0),
                 paid_to_date: Number(cert.paid_to_date || 0),
                 pending_draft: Number(cert.pending_draft_amount || 0),
-                amount: Math.max(0, Number(cert.net_amount || 0) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0) - Number(cert.pending_draft_amount || 0))
+                amount: Math.max(0, Number(cert.net_amount || 0) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0) - Number(cert.pending_draft_amount || 0)),
+                full_outstanding: Math.max(0, Number(cert.net_amount || 0) - Number(cert.returned_amount || 0) - Number(cert.paid_to_date || 0) - Number(cert.pending_draft_amount || 0)),
+                advance_amount: 0,
+                has_partial_receipt: false,
+                is_legacy: true,
             }))
     }
   }, [selectedParty, payablesQueue])
@@ -224,7 +247,7 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
       <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={() => !loading && onClose()} />
       
-      <div className="relative w-full max-w-5xl max-h-[90vh] flex flex-col rounded-2xl bg-background shadow-2xl overflow-hidden border border-border" dir="rtl">
+      <div className="relative w-full max-w-6xl max-h-[90vh] flex flex-col rounded-2xl bg-background shadow-2xl overflow-hidden border border-border" dir="rtl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border bg-white px-6 py-4 shrink-0">
           <div>
@@ -380,15 +403,36 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                                   </thead>
                                   <tbody className="divide-y divide-border">
                                       {selectedPartyDocs.map((doc: any) => (
-                                          <tr key={doc.id} className="hover:bg-black/5 transition-colors">
-                                              <td className="py-3 px-4 text-navy font-semibold">{doc.project || 'إدارة مركزية'}</td>
-                                              <td className="py-3 px-4 font-medium text-text-primary" dir="ltr">{doc.no}</td>
-                                              <td className="py-3 px-4 text-text-secondary" dir="ltr">{doc.date}</td>
-                                              <td className="py-3 px-4 font-medium text-gray-500" dir="ltr">{doc.net_amount?.toLocaleString() || '0'}</td>
-                                              <td className="py-3 px-4 font-medium text-purple-700" dir="ltr">{doc.returned_amount > 0 ? doc.returned_amount.toLocaleString() : '—'}</td>
-                                              <td className="py-3 px-4 font-medium text-success" dir="ltr">{doc.paid_to_date > 0 ? doc.paid_to_date.toLocaleString() : '0'}</td>
-                                              <td className="py-3 px-4 font-medium text-orange-600" dir="ltr">{doc.pending_draft > 0 ? Array.from('🕒 ').join('') + doc.pending_draft.toLocaleString() : '0'}</td>
-                                              <td className="py-3 px-4 font-bold text-danger" dir="ltr">{doc.amount.toLocaleString()}</td>
+                                          <>
+                                            <tr key={doc.id} className={`hover:bg-black/5 transition-colors ${doc.has_partial_receipt ? 'bg-amber-50/40' : ''}`}>
+                                              <td className="py-3 px-4 text-navy font-semibold text-xs">{doc.project || 'إدارة مركزية'}</td>
+                                              <td className="py-3 px-4 font-medium text-text-primary" dir="ltr">
+                                                <div className="flex flex-col gap-0.5">
+                                                  <span className="text-xs">{doc.no}</span>
+                                                  {doc.has_partial_receipt && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 bg-amber-100 rounded-full px-1.5 py-0.5 w-fit">
+                                                      ⚠️ استلام جزئي
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              </td>
+                                              <td className="py-3 px-4 text-text-secondary text-xs" dir="ltr">{doc.date}</td>
+                                              <td className="py-3 px-4 font-medium text-gray-500 text-xs" dir="ltr">{doc.net_amount?.toLocaleString() || '0'}</td>
+                                              <td className="py-3 px-4 font-medium text-purple-700 text-xs" dir="ltr">{doc.returned_amount > 0 ? doc.returned_amount.toLocaleString() : '—'}</td>
+                                              <td className="py-3 px-4 font-medium text-success text-xs" dir="ltr">{doc.paid_to_date > 0 ? doc.paid_to_date.toLocaleString() : '0'}</td>
+                                              <td className="py-3 px-4 font-medium text-orange-600 text-xs" dir="ltr">{doc.pending_draft > 0 ? '🕒 ' + doc.pending_draft.toLocaleString() : '0'}</td>
+                                              <td className="py-3 px-4 text-xs" dir="ltr">
+                                                {doc.has_partial_receipt ? (
+                                                  <div className="flex flex-col gap-0.5">
+                                                    <span className="font-bold text-amber-700">{doc.amount.toLocaleString()}</span>
+                                                    {doc.advance_amount > 0 && (
+                                                      <span className="text-[10px] text-blue-600">+{doc.advance_amount.toLocaleString()} مقدمة</span>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <span className="font-bold text-danger">{doc.amount.toLocaleString()}</span>
+                                                )}
+                                              </td>
                                               <td className="py-3 px-4">
                                                   <input
                                                       type="number"
@@ -397,12 +441,26 @@ export default function GlobalDraftPaymentModal({ isOpen, onClose, initialPartyI
                                                       max={doc.amount}
                                                       value={allocations[doc.id] || ''}
                                                       onChange={(e) => handleAllocationChange(doc.id, e.target.value)}
-                                                      className="w-full rounded border border-primary/30 px-2 py-1.5 text-left font-semibold focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-primary/5 transition-all"
+                                                      className="w-full rounded border border-primary/30 px-2 py-1.5 text-left font-semibold focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary focus:bg-primary/5 transition-all text-xs"
                                                       dir="ltr"
                                                       placeholder="0.00"
                                                   />
                                               </td>
-                                          </tr>
+                                            </tr>
+                                            {doc.has_partial_receipt && (
+                                              <tr key={`${doc.id}-warn`} className="bg-amber-50">
+                                                <td colSpan={9} className="px-4 py-1.5">
+                                                  <div className="flex items-center gap-2 text-[11px] text-amber-800 bg-amber-100 rounded px-3 py-1.5">
+                                                    <span>⚠️</span>
+                                                    <span>
+                                                      الحد المسموح بسداده: <strong>{doc.amount.toLocaleString()} ج.م</strong> (المستلم فعلاً من المخزن).
+                                                      {doc.advance_amount > 0 && <> الباقي ({doc.advance_amount.toLocaleString()} ج.م) يُسجَّل كدفعة مقدمة للمورد.</>}
+                                                    </span>
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                            )}
+                                          </>
                                       ))}
                                   </tbody>
                                   <tfoot className="bg-background/80 border-t border-border">

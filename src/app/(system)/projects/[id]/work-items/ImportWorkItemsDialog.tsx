@@ -15,10 +15,12 @@ export default function ImportWorkItemsDialog({ projectId, onSuccess }: { projec
   const [loadingItems, setLoadingItems] = useState(false)
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [existingItemCodes, setExistingItemCodes] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (isOpen) {
       loadProjects()
+      loadCurrentProjectItems()
       // reset state on open
       setSelectedProjectId('')
       setItems([])
@@ -26,6 +28,16 @@ export default function ImportWorkItemsDialog({ projectId, onSuccess }: { projec
       setError(null)
     }
   }, [isOpen])
+
+  async function loadCurrentProjectItems() {
+    try {
+      const data = await getProjectWorkItems(projectId)
+      const codes = new Set((data || []).map((i: any) => i.item_code?.trim()?.toLowerCase()).filter(Boolean))
+      setExistingItemCodes(codes)
+    } catch (err) {
+      console.error('Failed to load current project items', err)
+    }
+  }
 
   async function loadProjects() {
     setLoadingProjects(true)
@@ -62,10 +74,12 @@ export default function ImportWorkItemsDialog({ projectId, onSuccess }: { projec
   }
 
   function handleSelectAll() {
-    if (selectedItemIds.length === items.length) {
+    const importableItems = items.filter(i => !existingItemCodes.has(i.item_code?.trim()?.toLowerCase()))
+    
+    if (selectedItemIds.length === importableItems.length && importableItems.length > 0) {
       setSelectedItemIds([]) // deselect all
     } else {
-      setSelectedItemIds(items.map(i => i.id)) // select all
+      setSelectedItemIds(importableItems.map(i => i.id)) // select all importable
     }
   }
 
@@ -154,7 +168,7 @@ export default function ImportWorkItemsDialog({ projectId, onSuccess }: { projec
                       onClick={handleSelectAll} 
                       className="text-primary text-xs font-semibold hover:underline bg-primary/5 px-2 py-1 rounded"
                     >
-                      {selectedItemIds.length === items.length && items.length > 0 ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
+                      {selectedItemIds.length > 0 ? 'إلغاء تحديد الكل' : 'تحديد الكل'}
                     </button>
                   </div>
                   
@@ -182,22 +196,31 @@ export default function ImportWorkItemsDialog({ projectId, onSuccess }: { projec
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
-                          {items.map(item => (
-                            <tr key={item.id} className="hover:bg-background-secondary/50 transition-colors">
-                              <td className="px-4 py-2.5 text-center">
-                                <input 
-                                  type="checkbox" 
-                                  checked={selectedItemIds.includes(item.id)}
-                                  onChange={() => toggleItem(item.id)}
-                                  className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer"
-                                />
-                              </td>
-                              <td className="px-4 py-2.5 font-medium text-text-primary">{item.item_code}</td>
-                              <td className="px-4 py-2.5 text-text-primary">{item.arabic_description}</td>
-                              <td className="px-4 py-2.5 text-center dir-ltr text-text-secondary">{Number(item.owner_price || 0).toLocaleString()}</td>
-                              <td className="px-4 py-2.5 text-center dir-ltr text-text-secondary">{Number(item.subcontractor_price || 0).toLocaleString()}</td>
-                            </tr>
-                          ))}
+                          {items.map(item => {
+                            const isExisting = existingItemCodes.has(item.item_code?.trim()?.toLowerCase())
+                            return (
+                              <tr key={item.id} className={`transition-colors ${isExisting ? 'bg-gray-50/50 opacity-60' : 'hover:bg-background-secondary/50'}`}>
+                                <td className="px-4 py-2.5 text-center">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={selectedItemIds.includes(item.id)}
+                                    onChange={() => toggleItem(item.id)}
+                                    disabled={isExisting}
+                                    className="w-4 h-4 rounded border-border text-primary focus:ring-primary cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                  />
+                                </td>
+                                <td className="px-4 py-2.5 font-medium text-text-primary whitespace-nowrap">
+                                  {item.item_code}
+                                  {isExisting && (
+                                    <span className="block mt-0.5 text-[10px] font-bold text-amber-600 bg-amber-100 px-1.5 py-0.5 rounded w-max">موجود بالفعل</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 text-text-primary">{item.arabic_description}</td>
+                                <td className="px-4 py-2.5 text-center dir-ltr text-text-secondary">{Number(item.owner_price || 0).toLocaleString()}</td>
+                                <td className="px-4 py-2.5 text-center dir-ltr text-text-secondary">{Number(item.subcontractor_price || 0).toLocaleString()}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     )}

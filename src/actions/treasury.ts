@@ -34,8 +34,25 @@ export async function getAccountTransactions(accountId: string) {
       project:projects(arabic_name)
     `)
     .eq('financial_account_id', accountId)
-    .order('transaction_date', { ascending: false })
     .order('created_at', { ascending: false })
+    .order('transaction_date', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function getAllGlobalTransactions() {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('financial_transactions')
+    .select(`
+      *,
+      created_by_user:users(display_name),
+      project:projects(arabic_name),
+      financial_account:financial_accounts(arabic_name, account_type)
+    `)
+    .order('created_at', { ascending: false })
+    .order('transaction_date', { ascending: false })
 
   if (error) throw error
   return data
@@ -279,4 +296,39 @@ export async function depositFunds(payload: {
   })
 
   revalidatePath('/company/treasury')
+}
+
+export async function getTransactionOriginLinks(referenceType: string, referenceId: string, projectId?: string) {
+  const supabase = createClient()
+  const links: { label: string; url: string; id: string; type: string }[] = []
+
+  if (!referenceId) return links
+
+  if (referenceType === 'payment_voucher') {
+    const { data: voucherParties } = await supabase.from('payment_voucher_parties').select('id').eq('payment_voucher_id', referenceId)
+    if (!voucherParties || voucherParties.length === 0) return links
+    
+    const partyIds = voucherParties.map((p: any) => p.id)
+    const { data: allocations } = await supabase.from('payment_allocations').select('*').in('payment_voucher_party_id', partyIds)
+    
+    if (allocations) {
+      for (const a of allocations) {
+        if (a.source_entity_type === 'supplier_invoice') {
+          const url = projectId ? `/projects/${projectId}/procurement/invoices/${a.source_entity_id}` : '#'
+          links.push({ label: 'فاتورة مورد', url, id: a.source_entity_id, type: a.source_entity_type })
+        } else if (a.source_entity_type === 'subcontractor_certificate') {
+          const url = projectId ? `/projects/${projectId}/certificates?openCert=${a.source_entity_id}` : '#'
+          links.push({ label: 'مستخلص مقاول باطن', url, id: a.source_entity_id, type: a.source_entity_type })
+        } else if (a.source_entity_type === 'owner_billing_document') {
+          const url = projectId ? `/projects/${projectId}/owner-billing/${a.source_entity_id}` : '#'
+          links.push({ label: 'مستخلص مالك', url, id: a.source_entity_id, type: a.source_entity_type })
+        } else if (a.source_entity_type === 'company_purchase_invoice') {
+          links.push({ label: 'فاتورة مشتريات إدارة', url: `/company/purchases/invoices/${a.source_entity_id}`, id: a.source_entity_id, type: a.source_entity_type })
+        }
+      }
+    }
+  }
+
+  // Deduplicate by URL
+  return Array.from(new Map(links.map(item => [item.url, item])).values())
 }

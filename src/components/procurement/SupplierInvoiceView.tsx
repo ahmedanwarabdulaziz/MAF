@@ -313,7 +313,9 @@ export default function SupplierInvoiceView({ projectId, invoiceId, hideBreadcru
               <tr>
                 <th className="px-4 py-3 font-semibold text-text-secondary">الصنف (المادة)</th>
                 <th className="px-4 py-3 font-semibold text-text-secondary text-center">الوحدة</th>
-                <th className="px-4 py-3 font-semibold text-navy">الكمية المستلمة</th>
+                <th className="px-4 py-3 font-semibold text-text-secondary">كمية الفاتورة</th>
+                <th className="px-4 py-3 font-semibold text-navy">مستلم فعلاً</th>
+                <th className="px-4 py-3 font-semibold text-danger">متبقي (لم يستلم)</th>
                 <th className="px-4 py-3 font-semibold text-text-secondary">سعر الوحدة</th>
                 <th className="px-4 py-3 font-semibold text-text-primary">الإجمالي الصافي</th>
               </tr>
@@ -322,12 +324,20 @@ export default function SupplierInvoiceView({ projectId, invoiceId, hideBreadcru
               {lines.map((line: any, idx: number) => {
                 const item = Array.isArray(line.item) ? line.item[0] : line.item
                 const unit = item?.unit ? (Array.isArray(item.unit) ? item.unit[0] : item.unit) : null
+                const invoicedQty = Number(line.invoiced_quantity || 0)
+                const receivedQty = (line.received_quantity !== null && line.received_quantity !== undefined)
+                  ? Number(line.received_quantity)
+                  : invoicedQty
+                const pendingQty = Math.max(0, invoicedQty - receivedQty)
+                const pendingValue = pendingQty * Number(line.unit_price || 0)
+                const hasShortage = pendingQty > 0
                 
                 return (
                  <tr key={idx} className="hover:bg-background-secondary/30 transition-colors">
                     <td className="px-4 py-4 whitespace-normal min-w-[200px] text-text-primary font-medium">{item?.item_code} - {item?.arabic_name || '---'}</td>
                     <td className="px-4 py-4 text-center text-text-tertiary">{unit?.arabic_name || '---'}</td>
                     
+                    {/* كمية الفاتورة */}
                     <td className="px-4 py-2 border-r border-border">
                       <input
                         type="number"
@@ -335,9 +345,38 @@ export default function SupplierInvoiceView({ projectId, invoiceId, hideBreadcru
                         disabled={!isEditable}
                         value={line.invoiced_quantity}
                         onChange={e => updateLine(idx, 'invoiced_quantity', Number(e.target.value))}
-                        className="w-24 rounded border border-border/50 bg-white px-2 py-1.5 text-sm outline-none focus:border-primary font-bold text-navy disabled:bg-transparent disabled:border-transparent text-right dir-ltr transition-all"
+                        className="w-24 rounded border border-border/50 bg-white px-2 py-1.5 text-sm outline-none focus:border-primary font-bold text-text-secondary disabled:bg-transparent disabled:border-transparent text-right dir-ltr transition-all"
                       />
                     </td>
+
+                    {/* المستلم فعلاً */}
+                    <td className="px-4 py-4 border-r border-border">
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className={`font-bold dir-ltr ${hasShortage ? 'text-amber-700' : 'text-navy'}`}>
+                          {receivedQty.toLocaleString()}
+                        </span>
+                        {hasShortage && (
+                          <span className="text-[10px] text-amber-600 whitespace-nowrap">
+                            {((receivedQty / invoicedQty) * 100).toFixed(0)}% من الفاتورة
+                          </span>
+                        )}
+                      </div>
+                    </td>
+
+                    {/* المتبقي لم يستلم */}
+                    <td className="px-4 py-4 border-r border-border">
+                      {hasShortage ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="font-bold text-danger dir-ltr">{pendingQty.toLocaleString()}</span>
+                          <span className="text-[10px] text-danger/80 whitespace-nowrap">
+                            {Number(pendingValue).toLocaleString()} ج.م
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-success font-bold text-sm">✓ مكتمل</span>
+                      )}
+                    </td>
+
                     <td className="px-4 py-2 border-r border-border">
                       <input
                         type="number"

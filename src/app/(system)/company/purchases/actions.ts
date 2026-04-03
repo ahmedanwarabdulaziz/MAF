@@ -828,7 +828,7 @@ export async function bulkPaySupplier(supplierPartyId: string, payload: {
 export async function getGlobalSupplierBalances() {
   const supabase = await createClient()
   
-  const [companyRes, projectsRes, pRes, discRes] = await Promise.all([
+  const [companyRes, projectRes, pRes, discRes] = await Promise.all([
     supabase.from('company_purchase_invoices').select(`
       supplier_party_id,
       gross_amount,
@@ -839,18 +839,30 @@ export async function getGlobalSupplierBalances() {
       outstanding_amount,
       supplier:parties!supplier_party_id(id, arabic_name)
     `).in('status', ['posted', 'partially_paid', 'paid']),
-    supabase.from('supplier_account_summaries_view').select('*'),
+    // Direct query on supplier_invoices — includes partially_paid status explicitly
+    supabase.from('supplier_invoices').select(`
+      id,
+      project_id,
+      supplier_party_id,
+      gross_amount,
+      net_amount,
+      paid_to_date,
+      outstanding_amount,
+      returned_amount,
+      supplier:supplier_party_id(id, arabic_name),
+      project:project_id(arabic_name)
+    `).in('status', ['posted', 'partially_paid', 'paid']),
     supabase.from('projects').select('id, arabic_name'),
     supabase.from('supplier_invoices').select('supplier_party_id').eq('discrepancy_status', 'pending')
   ])
 
   if (companyRes.error) throw new Error(companyRes.error.message)
-  if (projectsRes.error) throw new Error(projectsRes.error.message)
+  if (projectRes.error) throw new Error(projectRes.error.message)
   
   const suppliersWithDisc = new Set(discRes?.data?.map(x => x.supplier_party_id) || [])
   console.log("=== DEBUG SUPPLIER BALANCES ===");
   console.log("Company invoices aggregated:", companyRes.data?.length);
-  console.log("Projects invoices aggregated:", projectsRes.data?.length);
+  console.log("Projects invoices aggregated:", projectRes.data?.length);
 
   const pMap: Record<string, string> = {}
   pRes.data?.forEach(p => pMap[p.id] = p.arabic_name)
@@ -875,30 +887,41 @@ export async function getGlobalSupplierBalances() {
     compMap[sId].total_tax += Number(row.tax_amount || 0)
     compMap[sId].total_discount += Number(row.discount_amount || 0)
     compMap[sId].total_net += Number(row.net_amount || 0)
-    compMap[sId].total_paid += Number(row.paid_to_date || 0)
-    compMap[sId].total_outstanding += Number(row.outstanding_amount || 0)
+    compMap[sId].total_paid        += Number(row.paid_to_date || 0)
+    compMap[sId].total_outstanding += Math.max(0, Number(row.net_amount || 0) - Number(row.paid_to_date || 0))
   })
 
   Object.values(compMap).forEach(val => rawScopes.push(val))
 
-  // 2. Process Project Invoices
-  projectsRes.data.forEach(row => {
-    const pName = pMap[row.project_id] || 'مشروع غير معروف'
-    rawScopes.push({
-      supplier_party_id: row.supplier_party_id,
-      supplier_name: row.supplier_name || 'غير معروف',
-      scope: pName,
-      total_gross: Number(row.total_invoiced_gross || 0),
-      total_tax: Number(row.total_invoiced_tax || 0),
-      total_discount: Number(row.total_discount || 0),
-      total_net: Number(row.total_invoiced_net || 0),
-      total_paid: Number(row.total_paid || 0),
-      total_outstanding: Number(row.total_outstanding || 0),
-      advance_balance: 0,
-      total_return: Number(row.total_returned_net || 0),
-      has_pending_discrepancies: suppliersWithDisc.has(row.supplier_party_id)
-    })
+  // 2. Process Project Invoices — directly from supplier_invoices, aggregated per supplier per project
+  const projMap: Record<string, any> = {}
+  projectRes.data?.forEach(row => {
+    const sId = row.supplier_party_id
+    if (!sId) return
+    const supplierObj: any = Array.isArray(row.supplier) ? row.supplier[0] : row.supplier
+    const projectObj: any = Array.isArray(row.project) ? row.project[0] : row.project
+    const pName = projectObj?.arabic_name || pMap[row.project_id] || 'مشروع غير معروف'
+    const key = `${sId}_${row.project_id}`
+
+    if (!projMap[key]) {
+      projMap[key] = {
+        supplier_party_id: sId,
+        supplier_name: supplierObj?.arabic_name || 'غير معروف',
+        scope: pName,
+        total_gross: 0, total_tax: 0, total_discount: 0, total_net: 0,
+        total_paid: 0, total_outstanding: 0, advance_balance: 0, total_return: 0,
+        has_pending_discrepancies: suppliersWithDisc.has(sId)
+      }
+    }
+    const g = projMap[key]
+    g.total_gross += Number(row.gross_amount || 0)
+    g.total_net += Number(row.net_amount || 0)
+    g.total_paid        += Number(row.paid_to_date || 0)
+    g.total_outstanding += Math.max(0, Number(row.net_amount || 0) - Number(row.paid_to_date || 0))
+    g.total_return += Number(row.returned_amount || 0)
   })
+
+  Object.values(projMap).forEach(val => rawScopes.push(val))
 
   // 3. Process Subcontractor Certificates
   const { data: certs } = await supabase

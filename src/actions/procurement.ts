@@ -1356,3 +1356,102 @@ export async function bulkPaySupplierInvoices(supplierPartyId: string, projectId
 
   return { voucherNo, allocations }
 }
+
+// -------------------------------------------------------------
+// 3-WAY MATCH GUARD — حساب الحد المسموح بسداده لفاتورة مورد
+// يُطبَّق على الفواتير الجديدة فقط (التي لها received_quantity مسجّلة).
+// الفواتير القديمة (received_quantity = NULL) → الحد = outstanding_amount كاملاً.
+// -------------------------------------------------------------
+export async function getInvoicePayableLimit(invoiceId: string): Promise<{
+  invoiced_amount: number   // إجمالي الفاتورة
+  received_amount: number   // قيمة ما استُلم فعلاً
+  paid_to_date: number      // ما تم سداده سابقاً
+  payable_limit: number     // الحد الأقصى المسموح بسداده الآن
+  advance_amount: number    // الفرق الذي يمكن تسجيله كدفعة مقدمة
+  has_partial_receipt: boolean  // هل يوجد استلام جزئي؟
+  is_legacy: boolean        // هل الفاتورة قديمة (بدون received_quantity)؟
+}> {
+  const supabase = createClient()
+
+  // جلب رأس الفاتورة
+  const { data: invoice, error: invErr } = await supabase
+    .from('supplier_invoices')
+    .select('net_amount, paid_to_date, has_discrepancy')
+    .eq('id', invoiceId)
+    .single()
+
+  if (invErr || !invoice) throw new Error('الفاتورة غير موجودة')
+
+  const invoiced_amount = Number(invoice.net_amount || 0)
+  const paid_to_date    = Number(invoice.paid_to_date || 0)
+  const outstanding     = Math.max(0, invoiced_amount - paid_to_date)
+
+  // جلب بنود الفاتورة
+  const { data: lines } = await supabase
+    .from('supplier_invoice_lines')
+    .select('invoiced_quantity, received_quantity, unit_price')
+    .eq('invoice_id', invoiceId)
+
+  if (!lines || lines.length === 0) {
+    // لا بنود → لا قيد
+    return {
+      invoiced_amount,
+      received_amount: invoiced_amount,
+      paid_to_date,
+      payable_limit: outstanding,
+      advance_amount: 0,
+      has_partial_receipt: false,
+      is_legacy: true,
+    }
+  }
+
+  // هل الفاتورة قديمة؟ (كل البنود received_quantity = NULL)
+  const allLegacy = lines.every(l => l.received_quantity === null || l.received_quantity === undefined)
+
+  if (allLegacy) {
+    // فاتورة قديمة → لا قيد (سلوك سابق)
+    return {
+      invoiced_amount,
+      received_amount: invoiced_amount,
+      paid_to_date,
+      payable_limit: outstanding,
+      advance_amount: 0,
+      has_partial_receipt: false,
+      is_legacy: true,
+    }
+  }
+
+  // فاتورة جديدة → احسب قيمة الاستلام الفعلي
+  let received_amount = 0
+  let has_partial_receipt = false
+
+  for (const line of lines) {
+    const invoicedQty = Number(line.invoiced_quantity || 0)
+    // إذا received_quantity = NULL في بند واحد → نعتبره مستلم بالكامل (حالة نادرة للبنود الجزئية)
+    const receivedQty = (line.received_quantity !== null && line.received_quantity !== undefined)
+      ? Number(line.received_quantity)
+      : invoicedQty
+    const unitPrice   = Number(line.unit_price || 0)
+
+    received_amount += receivedQty * unitPrice
+
+    if (receivedQty < invoicedQty) {
+      has_partial_receipt = true
+    }
+  }
+
+  // الحد = ما استُلم − ما دُفع مسبقاً (لا يقل عن صفر)
+  const payable_limit  = Math.max(0, received_amount - paid_to_date)
+  // الفرق القابل للتحول لدفعة مقدمة = outstanding − payable_limit
+  const advance_amount = Math.max(0, outstanding - payable_limit)
+
+  return {
+    invoiced_amount,
+    received_amount,
+    paid_to_date,
+    payable_limit,
+    advance_amount,
+    has_partial_receipt,
+    is_legacy: false,
+  }
+}

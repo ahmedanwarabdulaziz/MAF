@@ -235,6 +235,7 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
 
       {/* Main Table */}
       <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm text-right">
           <thead className="bg-background-secondary border-b">
             <tr>
@@ -248,7 +249,7 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
               <th className="px-5 py-3 font-semibold text-primary text-right" title="رصيد غير مستهلك من الدفعات">الدفعات المقدمة</th>
               <th className="px-5 py-3 font-semibold text-success text-right" title="إجمالي المسدد من فواتير + المرتجعات + الدفعات المقدمة">إجمالي المسدد (شامل)</th>
               <th className="px-5 py-3 font-semibold text-danger text-right" title="الرصيد الفعلي المستحق للمورد">الرصيد المستحق</th>
-              <th className="px-5 py-3"></th>
+              <th className="px-4 py-3 sticky left-0 bg-background-secondary z-10 min-w-[90px]"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -314,7 +315,7 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
                     {fmt(sup.total_outstanding - sup.advance_balance - sup.total_return)}
                   </span>
                 </td>
-                <td className="px-5 py-4 text-left">
+                <td className="px-4 py-4 sticky left-0 bg-white z-10 border-r border-border/30">
                   <div className="flex items-center justify-end gap-2">
                     <button
                       onClick={() => {
@@ -350,6 +351,7 @@ export default function SupplierListClient({ rawScopes }: { rawScopes: any[] }) 
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {isAdvanceModalOpen && (

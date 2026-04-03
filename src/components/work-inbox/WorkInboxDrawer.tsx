@@ -2,12 +2,12 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
-// PERF-03: drawer uses getWorkInboxData directly — getUserNotifications was running
-// getWorkInboxData (10 queries) + system_notifications + merge/re-sort.
-// The drawer is a quick-access preview that doesn't need persisted read-state.
+// AG-PERF-10: drawer is a live priority-sorted preview — no persisted read-state.
+// Uses getWorkInboxData directly (not getUserNotifications) to avoid the extra
+// system_notifications merge overhead. Items are not "marked as read" because there
+// is no write path to back that claim.
 import { getWorkInboxData } from '@/actions/work-inbox'
 import { WorkInboxItem, WorkInboxPriority, TYPE_LABELS } from '@/lib/work-inbox-types'
-import { useRouter } from 'next/navigation'
 
 const PRIORITY_DOT: Record<string, string> = {
   critical: 'bg-red-500',
@@ -30,7 +30,6 @@ type Props = {
 }
 
 export default function WorkInboxDrawer({ onClose }: Props) {
-  const router = useRouter()
   const [items, setItems]     = useState<WorkInboxItem[] | null>(null)
   const [total, setTotal]     = useState(0)
   const [counts, setCounts]   = useState<Record<WorkInboxPriority, number>>({ critical: 0, high: 0, normal: 0 })
@@ -93,16 +92,8 @@ export default function WorkInboxDrawer({ onClose }: Props) {
     return () => document.removeEventListener('mousedown', handler)
   }, [onClose])
 
-  const handleMarkAllAsRead = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    e.preventDefault()
-    // PERF-03: dynamic inbox items have no persisted read-state — navigate to full view
-    onClose()
-    router.push('/company/critical-actions')
-  }
-
   const handleItemClick = (_item: WorkInboxItem) => {
-    // PERF-03: dynamic inbox items don't track read-state — just close and navigate
+    // AG-PERF-10: drawer is a live preview — no persisted read-state, just close and navigate
     onClose()
   }
 
@@ -154,16 +145,9 @@ export default function WorkInboxDrawer({ onClose }: Props) {
           </button>
         </div>
         {/* Priority summary */}
-        {!loading && (
-          <div className="flex items-center justify-between mt-1.5">
-             <div className="text-[10px] text-white/60 font-medium">
-               {total > 0 ? prioritySummary : ''}
-             </div>
-             {total > 0 && (
-                <button onClick={handleMarkAllAsRead} className="text-[10px] text-primary-light hover:text-white transition-colors underline decoration-primary-light/30 underline-offset-2">
-                  تحديد الكل كمقروء ✓
-                </button>
-             )}
+        {!loading && total > 0 && (
+          <div className="mt-1.5 text-[10px] text-white/60 font-medium">
+            {prioritySummary}
           </div>
         )}
       </div>
@@ -191,46 +175,35 @@ export default function WorkInboxDrawer({ onClose }: Props) {
                 </div>
                 {/* Items in group */}
                 <div className="divide-y divide-border/40">
-                  {group.items.map(item => {
-                    const isUnread = item.metadata?.is_read === false
-                    return (
-                      <Link
-                        key={item.id}
-                        href={item.href}
-                        onClick={() => handleItemClick(item)}
-                        className={`group relative flex items-start gap-3 px-4 py-3 transition-colors ${isUnread ? 'bg-blue-50/20 hover:bg-blue-50/40' : 'hover:bg-background-secondary/60'}`}
-                      >
-                         {/* Unread Indicator */}
-                        {isUnread && (
-                          <span className="absolute left-3 top-3 flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                          </span>
-                        )}
-
-                        <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${PRIORITY_DOT[item.priority]}`} />
-                        <div className="flex-1 min-w-0 pr-1">
-                          <div className={`text-sm leading-snug truncate ${isUnread ? 'font-bold text-navy group-hover:text-primary' : 'font-semibold text-text-primary group-hover:text-primary'}`}>
-                            {item.title}
-                          </div>
-                          <div className="text-xs text-text-secondary flex items-center gap-1.5 mt-0.5">
-                            <span>{TYPE_LABELS[item.type]}</span>
-                            {item.projectCode && (
-                              <>
-                                <span className="text-border">·</span>
-                                <span className="font-mono">{item.projectCode}</span>
-                              </>
-                            )}
-                          </div>
+                  {group.items.map(item => (
+                    <Link
+                      key={item.id}
+                      href={item.href}
+                      onClick={() => handleItemClick(item)}
+                      className="group relative flex items-start gap-3 px-4 py-3 transition-colors hover:bg-background-secondary/60"
+                    >
+                      <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${PRIORITY_DOT[item.priority]}`} />
+                      <div className="flex-1 min-w-0 pr-1">
+                        <div className="text-sm leading-snug truncate font-semibold text-text-primary group-hover:text-primary">
+                          {item.title}
                         </div>
-                        {item.ageDays != null && item.ageDays > 0 && (
-                          <span className="text-[10px] text-text-secondary shrink-0 mt-1">
-                            {item.ageDays}د
-                          </span>
-                        )}
-                      </Link>
-                    )
-                  })}
+                        <div className="text-xs text-text-secondary flex items-center gap-1.5 mt-0.5">
+                          <span>{TYPE_LABELS[item.type]}</span>
+                          {item.projectCode && (
+                            <>
+                              <span className="text-border">·</span>
+                              <span className="font-mono">{item.projectCode}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {item.ageDays != null && item.ageDays > 0 && (
+                        <span className="text-[10px] text-text-secondary shrink-0 mt-1">
+                          {item.ageDays}د
+                        </span>
+                      )}
+                    </Link>
+                  ))}
                 </div>
               </div>
             ))}

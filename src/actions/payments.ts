@@ -5,6 +5,51 @@ import { createAdminClient } from '@/lib/supabase-admin'
 import { revalidatePath } from 'next/cache'
 import { writeAuditLog } from '@/lib/audit'
 
+// ---------------------------------------------------------------------------
+// PRIVATE HELPER — 3-Way Match: compute payable ceiling for a supplier invoice
+// (new invoices only — old ones where received_quantity is NULL pass through)
+// ---------------------------------------------------------------------------
+async function _getPayableLimit(invoiceId: string, supabase: ReturnType<typeof createClient>) {
+  const { data: invoice } = await supabase
+    .from('supplier_invoices')
+    .select('net_amount, paid_to_date')
+    .eq('id', invoiceId)
+    .single()
+
+  if (!invoice) return { payable_limit: Infinity, is_legacy: true }
+
+  const netAmount  = Number(invoice.net_amount || 0)
+  const paidToDate = Number(invoice.paid_to_date || 0)
+  const outstanding = Math.max(0, netAmount - paidToDate)
+
+  const { data: lines } = await supabase
+    .from('supplier_invoice_lines')
+    .select('invoiced_quantity, received_quantity, unit_price')
+    .eq('invoice_id', invoiceId)
+
+  if (!lines || lines.length === 0) return { payable_limit: outstanding, is_legacy: true }
+
+  const allLegacy = lines.every(
+    (l: any) => l.received_quantity === null || l.received_quantity === undefined
+  )
+  if (allLegacy) return { payable_limit: outstanding, is_legacy: true }
+
+  let received_amount = 0
+  for (const line of lines) {
+    const invQty = Number(line.invoiced_quantity || 0)
+    const recQty = (line.received_quantity !== null && line.received_quantity !== undefined)
+      ? Number(line.received_quantity) : invQty
+    received_amount += recQty * Number(line.unit_price || 0)
+  }
+
+  return {
+    payable_limit:   Math.max(0, received_amount - paidToDate),
+    received_amount,
+    advance_amount:  Math.max(0, outstanding - Math.max(0, received_amount - paidToDate)),
+    is_legacy:       false,
+  }
+}
+
 // Fetch all payment vouchers for a project
 export async function getProjectPayments(projectId: string) {
   const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(projectId);
@@ -38,12 +83,13 @@ export async function getProjectPayablesQueue(projectId: string) {
 
   const supabase = createClient()
   
-  // 1. Supplier Invoices
+  // 1. Supplier Invoices — include lines to compute payable_limit
   const { data: supplierInvoices, error: supErr } = await supabase
     .from('supplier_invoices')
     .select(`
-      id, invoice_no, invoice_date, net_amount, paid_to_date, status,
-      supplier:supplier_party_id(id, arabic_name)
+      id, invoice_no, invoice_date, net_amount, paid_to_date, status, has_discrepancy,
+      supplier:supplier_party_id(id, arabic_name),
+      lines:supplier_invoice_lines(invoiced_quantity, received_quantity, unit_price)
     `)
     .eq('project_id', projectId)
     .in('status', ['posted', 'partially_paid'])
@@ -70,23 +116,73 @@ export async function getProjectPayablesQueue(projectId: string) {
     return { supplier_invoices: supplierInvoices || [], subcontractor_certificates: [] }
   }
 
+  // 3. Attach payable_limit to each supplier invoice (3-Way Match Guard)
+  const enrichedInvoices = (supplierInvoices || []).map((inv: any) => {
+    const lines: any[] = inv.lines || []
+    const paidToDate  = Number(inv.paid_to_date || 0)
+    const netAmount   = Number(inv.net_amount || 0)
+    const outstanding = Math.max(0, netAmount - paidToDate)
+
+    // Legacy invoice: all lines have received_quantity = null
+    const allLegacy = lines.length === 0 || lines.every((l: any) =>
+      l.received_quantity === null || l.received_quantity === undefined
+    )
+
+    if (allLegacy) {
+      return {
+        ...inv,
+        payable_limit: outstanding,
+        received_amount: netAmount,
+        advance_amount: 0,
+        has_partial_receipt: false,
+        is_legacy: true,
+      }
+    }
+
+    // New invoice: compute from received quantities
+    let received_amount = 0
+    let has_partial_receipt = false
+    for (const line of lines) {
+      const invQty = Number(line.invoiced_quantity || 0)
+      const recQty = (line.received_quantity !== null && line.received_quantity !== undefined)
+        ? Number(line.received_quantity)
+        : invQty
+      received_amount += recQty * Number(line.unit_price || 0)
+      if (recQty < invQty) has_partial_receipt = true
+    }
+
+    const payable_limit  = Math.max(0, received_amount - paidToDate)
+    const advance_amount = Math.max(0, outstanding - payable_limit)
+
+    return {
+      ...inv,
+      payable_limit,
+      received_amount,
+      advance_amount,
+      has_partial_receipt,
+      is_legacy: false,
+    }
+  })
+
   return {
-    supplier_invoices: supplierInvoices || [],
+    supplier_invoices: enrichedInvoices,
     subcontractor_certificates: subCertificates || []
   }
 }
+
 
 // Fetch the Global "Payables Queue" (Unpaid or Partially Paid Documents) across ALL projects
 export async function getGlobalPayablesQueue() {
   const supabase = createAdminClient() // use admin/service role to aggregate all data
   
-  // 1. Supplier Invoices
+  // 1. Supplier Invoices — include lines to compute payable_limit
   const { data: supplierInvoices, error: supErr } = await supabase
     .from('supplier_invoices')
     .select(`
-      id, invoice_no, invoice_date, net_amount, returned_amount, outstanding_amount, paid_to_date, status, project_id,
+      id, invoice_no, invoice_date, net_amount, returned_amount, outstanding_amount, paid_to_date, status, project_id, has_discrepancy,
       supplier:supplier_party_id(id, arabic_name),
-      project:project_id(arabic_name)
+      project:project_id(arabic_name),
+      lines:supplier_invoice_lines(invoiced_quantity, received_quantity, unit_price)
     `)
     .in('status', ['posted', 'partially_paid'])
 
@@ -145,18 +241,62 @@ export async function getGlobalPayablesQueue() {
     }
   }
 
-  // Attach pending_draft_amount to each document
+  // 5. Attach payable_limit + pending_draft_amount to each supplier invoice
+  const enrichSupplierInvoices = (docs: any[]) => docs.map((inv: any) => {
+    const lines: any[] = inv.lines || []
+    const paidToDate   = Number(inv.paid_to_date || 0)
+    const netAmount    = Number(inv.net_amount || 0)
+    const outstanding  = Math.max(0, netAmount - paidToDate)
+
+    const allLegacy = lines.length === 0 || lines.every((l: any) =>
+      l.received_quantity === null || l.received_quantity === undefined
+    )
+
+    let payable_limit       = outstanding
+    let received_amount     = netAmount
+    let advance_amount      = 0
+    let has_partial_receipt = false
+    let is_legacy           = true
+
+    if (!allLegacy) {
+      received_amount = 0
+      for (const line of lines) {
+        const invQty = Number(line.invoiced_quantity || 0)
+        const recQty = (line.received_quantity !== null && line.received_quantity !== undefined)
+          ? Number(line.received_quantity)
+          : invQty
+        received_amount += recQty * Number(line.unit_price || 0)
+        if (recQty < invQty) has_partial_receipt = true
+      }
+      payable_limit  = Math.max(0, received_amount - paidToDate)
+      advance_amount = Math.max(0, outstanding - payable_limit)
+      is_legacy      = false
+    }
+
+    return {
+      ...inv,
+      payable_limit,
+      received_amount,
+      advance_amount,
+      has_partial_receipt,
+      is_legacy,
+      pending_draft_amount: pendingMap[inv.id] || 0
+    }
+  })
+
+  // Attach pending only (no line data for certs/company invoices)
   const attachPending = (docs: any[]) => docs.map(doc => ({
     ...doc,
     pending_draft_amount: pendingMap[doc.id] || 0
   }))
 
   return {
-    supplier_invoices: attachPending(supplierInvoices || []),
+    supplier_invoices: enrichSupplierInvoices(supplierInvoices || []),
     subcontractor_certificates: attachPending(subCertificates || []),
     company_invoices: attachPending(companyInvoices || [])
   }
 }
+
 
 // Execute Payment Voucher Draft (Creates the Voucher, links Party, and Drafts Allocations)
 export async function draftPaymentVoucher(payload: {
@@ -173,6 +313,25 @@ export async function draftPaymentVoucher(payload: {
 }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // 3-WAY MATCH GUARD — يجب أن يكون أول تحقق قبل أي عملية كتابة على قاعدة البيانات
+  // ──────────────────────────────────────────────────────────────────────────
+  const supplierAllocations = payload.allocations.filter(a => a.source_type === 'supplier_invoice')
+  for (const alloc of supplierAllocations) {
+    const limit = await _getPayableLimit(alloc.source_id, supabase)
+    if (!limit.is_legacy && alloc.amount > limit.payable_limit + 0.001) {
+      const fmt  = (n: number) => n.toLocaleString('ar-EG', { minimumFractionDigits: 2 })
+      const recv = (limit as any).received_amount ?? limit.payable_limit
+      const adv  = (limit as any).advance_amount  ?? 0
+      throw new Error(
+        `⚠️ لا يمكن سداد ${fmt(alloc.amount)} ج.م من هذه الفاتورة.\n` +
+        `المستلم فعلاً من المخزن: ${fmt(recv)} ج.م — ` +
+        `الحد الأقصى المسموح بسداده الآن: ${fmt(limit.payable_limit)} ج.م.\n` +
+        `لسداد الفرق (${fmt(adv)} ج.م)، سجّله كدفعة مقدمة للمورد.`
+      )
+    }
+  }
 
   // Let the DB trigger handle sequential numbering
   const voucherNo = 'تلقائي'
@@ -254,8 +413,10 @@ export async function getTreasuryExecutionQueue() {
       project:project_id(arabic_name),
       financial_account:financial_account_id(arabic_name, currency),
       parties:payment_voucher_parties(
+        id,
+        party_id,
         paid_amount,
-        party:party_id(arabic_name)
+        party:party_id(id, arabic_name)
       ),
       created_by_user:users!payment_vouchers_created_by_fkey(display_name)
     `)

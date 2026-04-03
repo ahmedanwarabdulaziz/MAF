@@ -30,10 +30,12 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default function VendorStatementModal({ 
   partyId, 
-  onClose 
+  onClose,
+  zClass = 'z-[60]'
 }: { 
   partyId: string;
   onClose: () => void;
+  zClass?: string;
 }) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
@@ -579,7 +581,7 @@ export default function VendorStatementModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
+    <div className={`fixed inset-0 ${zClass} flex items-center justify-center p-4`} dir="rtl">
       <div className="fixed inset-0 bg-navy/60 backdrop-blur-sm transition-opacity" onClick={onClose} />
       
       <GlobalDraftPaymentModal 
@@ -820,6 +822,7 @@ export default function VendorStatementModal({
                 <th className="px-4 py-3 font-semibold text-purple-700">المرتجع</th>
                 <th className="px-4 py-3 font-semibold text-success">المسدد</th>
                 <th className="px-4 py-3 font-semibold text-danger">المتبقي</th>
+                <th className="px-4 py-3 font-semibold text-amber-700">متبقي (يوزع الآن)</th>
                 <th className="px-4 py-3 font-semibold text-center">حالة الفحص / المخزن</th>
                 <th className="px-4 py-3 text-center">إجراءات</th>
               </tr>
@@ -829,12 +832,20 @@ export default function VendorStatementModal({
                 const status = STATUS_LABELS[inv.status] || { label: inv.status, badgeClass: 'bg-gray-100 text-gray-700' }
                 const realOutstanding = Math.max(0, Number(inv.net_amount) - Number(inv.returned_amount || 0) - Number(inv.paid_to_date || 0))
                 
+                // 3-way matching: payable now = received value minus what's already paid
+                const receivedValue = inv.received_value !== null && inv.received_value !== undefined ? Number(inv.received_value) : null
+                const paidToDate = Number(inv.paid_to_date || 0)
+                const payableNow = receivedValue !== null
+                  ? Math.max(0, receivedValue - paidToDate)
+                  : realOutstanding
+                const hasDiscrepancy = inv.discrepancy_status === 'pending'
+                
                 return (
                   <tr key={inv.id} className="hover:bg-gray-50/50 transition-colors">
                     <td className="px-4 py-3 font-medium text-amber-700">
                       <div className="flex flex-col gap-1 items-start">
                         <span>{inv.invoice_no}</span>
-                        {inv.discrepancy_status === 'pending' && (
+                        {hasDiscrepancy && (
                           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-danger/10 text-danger border border-danger/20 whitespace-nowrap">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 ml-1">
                               <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
@@ -852,6 +863,23 @@ export default function VendorStatementModal({
                        <span className={realOutstanding > 0 ? 'text-danger' : realOutstanding < 0 ? 'text-purple-600' : 'text-gray-500'}>
                           {fmt(realOutstanding)}
                        </span>
+                    </td>
+                    {/* متبقي (يوزع الآن) — مبني على ما اتستلم فعلاً */}
+                    <td className="px-4 py-3 font-bold dir-ltr text-right">
+                      {hasDiscrepancy ? (
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className={payableNow > 0 ? 'text-amber-700' : 'text-gray-400'}>
+                            {fmt(payableNow)}
+                          </span>
+                          {receivedValue !== null && (
+                            <span className="text-[10px] text-text-tertiary whitespace-nowrap">
+                              مستلم: {fmt(receivedValue)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className={`inline-flex px-2 py-1 rounded text-[10px] font-bold ${status.badgeClass}`}>

@@ -80,6 +80,7 @@ export default function CreateOwnerBillModal({
   const [materials,  setMaterials]  = useState<any[]>([])
   const [prevQtys,   setPrevQtys]   = useState<Record<string, number>>({})
   const [selectorType, setSelectorType] = useState<string | null>(null)
+  const [selectedSelectorItems, setSelectedSelectorItems] = useState<any[]>([])
 
   const mountedRef = useRef(true)
   useEffect(() => {
@@ -280,6 +281,7 @@ export default function CreateOwnerBillModal({
 
     setLines([...lines, ...newLines])
     setSelectorType(null)
+    setSelectedSelectorItems([])
   }
 
   function updateLine(id: string, field: keyof BillLine, val: any) {
@@ -487,15 +489,15 @@ export default function CreateOwnerBillModal({
 
               {/* Add Line Buttons */}
               <div className="flex flex-wrap items-center gap-3">
-                <button type="button" onClick={() => setSelectorType('subcontractor')}
+                <button type="button" onClick={() => { setSelectorType('subcontractor'); setSelectedSelectorItems([]); }}
                   className="px-4 py-2 rounded-lg bg-white border border-border text-sm font-semibold text-text-primary hover:border-primary hover:text-primary transition-colors shadow-sm flex items-center gap-2">
                   <span className="text-lg">+</span> أعمال مقاولي الباطن
                 </button>
-                <button type="button" onClick={() => setSelectorType('store_issue')}
+                <button type="button" onClick={() => { setSelectorType('store_issue'); setSelectedSelectorItems([]); }}
                   className="px-4 py-2 rounded-lg bg-white border border-border text-sm font-semibold text-text-primary hover:border-primary hover:text-primary transition-colors shadow-sm flex items-center gap-2">
                   <span className="text-lg">+</span> مهام الأعمال (صرف مخازن)
                 </button>
-                <button type="button" onClick={() => setSelectorType('material')}
+                <button type="button" onClick={() => { setSelectorType('material'); setSelectedSelectorItems([]); }}
                   className="px-4 py-2 rounded-lg bg-white border border-border text-sm font-semibold text-text-primary hover:border-amber-600 hover:text-amber-600 transition-colors shadow-sm flex items-center gap-2">
                   <span className="text-lg">+</span> تشوينات (مواد بالموقع)
                 </button>
@@ -773,11 +775,22 @@ export default function CreateOwnerBillModal({
                         <table className="w-full text-sm text-right bg-white rounded-xl shadow-sm border border-border overflow-hidden">
                           <thead className="bg-background-secondary border-b border-border text-text-secondary">
                             <tr>
+                              <th className="px-4 py-3 w-10 text-center">
+                                <input type="checkbox" className="rounded focus:ring-primary text-primary"
+                                  checked={subItems.filter(i => Math.max(0, Number(i.cumulative_quantity || 0) - (prevQtys[i.project_work_items?.arabic_description || 'بند مقاول باطن'] || 0)) > 0).length > 0 && selectedSelectorItems.length === subItems.filter(i => Math.max(0, Number(i.cumulative_quantity || 0) - (prevQtys[i.project_work_items?.arabic_description || 'بند مقاول باطن'] || 0)) > 0).length}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedSelectorItems(subItems.filter(i => Math.max(0, Number(i.cumulative_quantity || 0) - (prevQtys[i.project_work_items?.arabic_description || 'بند مقاول باطن'] || 0)) > 0))
+                                    } else {
+                                      setSelectedSelectorItems([])
+                                    }
+                                  }}
+                                />
+                              </th>
                               <th className="px-4 py-3 font-semibold">بند الأعمال</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px]">إجمالي المقاول</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px]">السابق (للمالك)</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px]">المتبقي</th>
-                              <th className="px-4 py-3 font-semibold text-center w-[100px]">إجراء</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
@@ -786,8 +799,19 @@ export default function CreateOwnerBillModal({
                               const total = Number(item.cumulative_quantity || 0)
                               const prev  = prevQtys[desc] || 0
                               const remaining = Math.max(0, total - prev)
+                              const isSelected = selectedSelectorItems.includes(item)
                               return (
-                                <tr key={i} className="hover:bg-background-secondary/30">
+                                <tr key={i} className={`transition-colors ${isSelected ? 'bg-primary/5' : 'hover:bg-background-secondary/30'}`}>
+                                  <td className="px-4 py-3 text-center">
+                                    <input type="checkbox" className="rounded focus:ring-primary text-primary disabled:opacity-50"
+                                      disabled={remaining <= 0}
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) setSelectedSelectorItems([...selectedSelectorItems, item])
+                                        else setSelectedSelectorItems(selectedSelectorItems.filter(s => s !== item))
+                                      }}
+                                    />
+                                  </td>
                                   <td className="px-4 py-3">
                                     <p className="font-medium">{desc}</p>
                                     <p className="text-xs text-text-tertiary">{item.project_work_items?.item_code || ''}</p>
@@ -795,12 +819,6 @@ export default function CreateOwnerBillModal({
                                   <td className="px-4 py-3 text-center font-bold text-navy dir-ltr">{total.toLocaleString()}</td>
                                   <td className="px-4 py-3 text-center text-text-secondary dir-ltr">{prev.toLocaleString()}</td>
                                   <td className="px-4 py-3 text-center font-bold text-success dir-ltr">{remaining.toLocaleString()}</td>
-                                  <td className="px-4 py-3 text-center">
-                                    <button onClick={() => addSelectedItems([item], 'subcontractor')} disabled={remaining <= 0}
-                                      className="text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                                      إدراج
-                                    </button>
-                                  </td>
                                 </tr>
                               )
                             })}
@@ -820,11 +838,19 @@ export default function CreateOwnerBillModal({
                         <table className="w-full text-sm text-right bg-white rounded-xl shadow-sm border border-border overflow-hidden">
                           <thead className="bg-background-secondary border-b border-border text-text-secondary">
                             <tr>
+                              <th className="px-4 py-3 w-10 text-center">
+                                <input type="checkbox" className="rounded focus:ring-primary text-primary"
+                                  checked={storeIssues.filter(i => Math.max(0, Number(i.quantity || 0) - (prevQtys[i.items?.arabic_name || 'بند مهام'] || 0)) > 0).length > 0 && selectedSelectorItems.length === storeIssues.filter(i => Math.max(0, Number(i.quantity || 0) - (prevQtys[i.items?.arabic_name || 'بند مهام'] || 0)) > 0).length}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setSelectedSelectorItems(storeIssues.filter(i => Math.max(0, Number(i.quantity || 0) - (prevQtys[i.items?.arabic_name || 'بند مهام'] || 0)) > 0))
+                                    else setSelectedSelectorItems([])
+                                  }}
+                                />
+                              </th>
                               <th className="px-4 py-3 font-semibold">الصنف / المهمة</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px]">إجمالي المنصرف</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px]">السابق</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px]">المتبقي</th>
-                              <th className="px-4 py-3 font-semibold text-center w-[100px]">إجراء</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-border">
@@ -833,18 +859,23 @@ export default function CreateOwnerBillModal({
                               const total = Number(item.quantity || 0)
                               const prev  = prevQtys[desc] || 0
                               const remaining = Math.max(0, total - prev)
+                              const isSelected = selectedSelectorItems.includes(item)
                               return (
-                                <tr key={i} className="hover:bg-background-secondary/30">
+                                <tr key={i} className={`transition-colors ${isSelected ? 'bg-primary/5' : 'hover:bg-background-secondary/30'}`}>
+                                  <td className="px-4 py-3 text-center">
+                                    <input type="checkbox" className="rounded focus:ring-primary text-primary disabled:opacity-50"
+                                      disabled={remaining <= 0}
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) setSelectedSelectorItems([...selectedSelectorItems, item])
+                                        else setSelectedSelectorItems(selectedSelectorItems.filter(s => s !== item))
+                                      }}
+                                    />
+                                  </td>
                                   <td className="px-4 py-3 font-medium">{desc}</td>
                                   <td className="px-4 py-3 text-center font-bold text-navy dir-ltr">{total.toLocaleString()}</td>
                                   <td className="px-4 py-3 text-center text-text-secondary dir-ltr">{prev.toLocaleString()}</td>
                                   <td className="px-4 py-3 text-center font-bold text-success dir-ltr">{remaining.toLocaleString()}</td>
-                                  <td className="px-4 py-3 text-center">
-                                    <button onClick={() => addSelectedItems([item], 'store_issue')} disabled={remaining <= 0}
-                                      className="text-xs font-bold text-primary bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-lg hover:bg-primary hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                                      إدراج
-                                    </button>
-                                  </td>
                                 </tr>
                               )
                             })}
@@ -864,11 +895,19 @@ export default function CreateOwnerBillModal({
                         <table className="w-full text-sm text-right bg-white rounded-xl shadow-sm border border-amber-200 overflow-hidden">
                           <thead className="bg-amber-50 border-b border-amber-200">
                             <tr>
+                              <th className="px-4 py-3 w-10 text-center">
+                                <input type="checkbox" className="rounded focus:ring-amber-600 text-amber-600"
+                                  checked={materials.filter(i => Math.max(0, Number(i.quantity_on_hand || 0) - (prevQtys[i.item?.arabic_name || 'مادة تشوين'] || 0)) > 0).length > 0 && selectedSelectorItems.length === materials.filter(i => Math.max(0, Number(i.quantity_on_hand || 0) - (prevQtys[i.item?.arabic_name || 'مادة تشوين'] || 0)) > 0).length}
+                                  onChange={(e) => {
+                                    if (e.target.checked) setSelectedSelectorItems(materials.filter(i => Math.max(0, Number(i.quantity_on_hand || 0) - (prevQtys[i.item?.arabic_name || 'مادة تشوين'] || 0)) > 0))
+                                    else setSelectedSelectorItems([])
+                                  }}
+                                />
+                              </th>
                               <th className="px-4 py-3 font-semibold text-amber-900">المادة المشونة</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px] text-amber-900">إجمالي الموقع</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px] text-amber-900">السابق</th>
                               <th className="px-4 py-3 font-semibold text-center w-[130px] text-amber-900">المتبقي</th>
-                              <th className="px-4 py-3 font-semibold text-center w-[100px] text-amber-900">إجراء</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-amber-100">
@@ -877,18 +916,23 @@ export default function CreateOwnerBillModal({
                               const total = Number(item.quantity_on_hand || 0)
                               const prev  = prevQtys[desc] || 0
                               const remaining = Math.max(0, total - prev)
+                              const isSelected = selectedSelectorItems.includes(item)
                               return (
-                                <tr key={i} className="hover:bg-amber-50/50">
+                                <tr key={i} className={`transition-colors ${isSelected ? 'bg-amber-100/60' : 'hover:bg-amber-50/50'}`}>
+                                  <td className="px-4 py-3 text-center">
+                                    <input type="checkbox" className="rounded focus:ring-amber-600 text-amber-600 disabled:opacity-50"
+                                      disabled={remaining <= 0}
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        if (e.target.checked) setSelectedSelectorItems([...selectedSelectorItems, item])
+                                        else setSelectedSelectorItems(selectedSelectorItems.filter(s => s !== item))
+                                      }}
+                                    />
+                                  </td>
                                   <td className="px-4 py-3 font-medium">{desc}</td>
                                   <td className="px-4 py-3 text-center font-bold text-amber-700 dir-ltr">{total.toLocaleString()}</td>
                                   <td className="px-4 py-3 text-center text-amber-900/60 dir-ltr">{prev.toLocaleString()}</td>
                                   <td className="px-4 py-3 text-center font-bold text-success dir-ltr">{remaining.toLocaleString()}</td>
-                                  <td className="px-4 py-3 text-center">
-                                    <button onClick={() => addSelectedItems([item], 'material')} disabled={remaining <= 0}
-                                      className="text-xs font-bold text-amber-700 bg-amber-100 border border-amber-200 px-3 py-1.5 rounded-lg hover:bg-amber-600 hover:text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-                                      إدراج مشون
-                                    </button>
-                                  </td>
                                 </tr>
                               )
                             })}
@@ -899,6 +943,24 @@ export default function CreateOwnerBillModal({
                   </div>
                 )}
               </div>
+              
+              {/* Selector Footer */}
+              <div className="px-6 py-4 border-t border-border flex justify-between items-center bg-white shrink-0">
+                <div className="text-sm font-semibold text-text-secondary">
+                  تم تحديد <span className="font-bold text-primary">{selectedSelectorItems.length}</span> بنود
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setSelectorType(null)} className="px-6 py-2 border border-border rounded-lg text-text-secondary hover:bg-background-secondary transition-colors font-medium">إلغاء</button>
+                  <button 
+                    onClick={() => addSelectedItems(selectedSelectorItems, selectorType as any)} 
+                    disabled={selectedSelectorItems.length === 0}
+                    className="px-8 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-50 font-bold transition-colors"
+                  >
+                    إدراج المحدد
+                  </button>
+                </div>
+              </div>
+
             </div>
           </div>
         )}

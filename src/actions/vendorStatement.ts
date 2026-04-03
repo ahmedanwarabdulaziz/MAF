@@ -35,8 +35,7 @@ export async function fetchVendorStatementData(partyId: string) {
 
   // Fetch Pending Draft Allocations
   let draftAllocationsMap: Record<string, number> = {}
-  const supabase = await createClient() // we can skip auth check since this is a server action
-  // The correct admin supabase query or standard query if user auth applies. The previous queries use standard fetch functions.
+  const supabase = await createClient()
   const { data: draftVouchers } = await supabase.from('payment_vouchers').select('id').eq('status', 'draft')
   
   if (draftVouchers && draftVouchers.length > 0) {
@@ -54,15 +53,38 @@ export async function fetchVendorStatementData(partyId: string) {
     }
   }
 
-  const attachPending = (docs: any[]) => docs.map((doc: any) => ({
+  // ── Compute received_value per project invoice (3-way matching) ──
+  // received_value = sum of (received_quantity * unit_price) per invoice line
+  // If received_quantity is null (not yet confirmed), fall back to invoiced_quantity
+  let receivedValueMap: Record<string, number> = {}
+  const allProjectInvoiceIds = (projectInvoices || []).map((i: any) => i.id)
+  if (allProjectInvoiceIds.length > 0) {
+    const { data: invLines } = await supabase
+      .from('supplier_invoice_lines')
+      .select('invoice_id, invoiced_quantity, received_quantity, unit_price')
+      .in('invoice_id', allProjectInvoiceIds)
+    
+    if (invLines) {
+      invLines.forEach((l: any) => {
+        const rQty = (l.received_quantity !== null && l.received_quantity !== undefined)
+          ? Number(l.received_quantity)
+          : Number(l.invoiced_quantity)
+        const val = rQty * Number(l.unit_price || 0)
+        receivedValueMap[l.invoice_id] = (receivedValueMap[l.invoice_id] || 0) + val
+      })
+    }
+  }
+
+  const attachPending = (docs: any[], includeReceived = false) => docs.map((doc: any) => ({
     ...doc,
-    pending_draft_amount: draftAllocationsMap[doc.id] || 0
+    pending_draft_amount: draftAllocationsMap[doc.id] || 0,
+    ...(includeReceived ? { received_value: receivedValueMap[doc.id] ?? null } : {})
   }))
 
   return {
     party,
     companyInvoices: attachPending(companyInvoices || []),
-    projectInvoices: attachPending(projectInvoices || []),
+    projectInvoices: attachPending(projectInvoices || [], true),
     accounts,
     certificates: attachPending(certificates || []),
     retentionMetrics,
