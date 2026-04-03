@@ -229,7 +229,7 @@ export default function SupplierInvoiceView({ projectId, invoiceId, hideBreadcru
       )}
 
       {/* CONFIRMATION TRAY */}
-      {(inv.status === 'pending_receipt' || inv.status === 'posted') && (
+      {(['pending_receipt', 'posted', 'partially_paid', 'paid'].includes(inv.status)) && (
         <div className="rounded-xl border border-primary/20 bg-blue-50 p-4 sm:p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-navy mb-1">تأكيد استلام المواد (GRN - Goods Receipt Note)</h3>
@@ -287,8 +287,10 @@ export default function SupplierInvoiceView({ projectId, invoiceId, hideBreadcru
           <p className="text-lg font-bold text-text-primary">
             {inv.status === 'draft' ? 'مسودة' :
              inv.status === 'pending_receipt' ? 'بانتظار تأكيد الاستلام' : 
-             inv.status === 'posted' && inv.discrepancy_status === 'pending' ? 'مستلمة جزئياً (يوجد نواقص)' :
-             inv.status === 'posted' ? 'مستلمة ومعتمدة (Posted)' : inv.status}
+             inv.status === 'posted' && inv.discrepancy_status === 'pending' ? 'مستلمة (يوجد نواقص)' :
+             inv.status === 'posted' ? 'مستلمة ومعتمدة (Posted)' :
+             inv.status === 'partially_paid' ? 'تسديد جزئي' :
+             inv.status === 'paid' ? 'مسددة بالكامل' : inv.status}
           </p>
         </div>
         <div className="rounded-xl border border-border bg-white p-5 shadow-sm">

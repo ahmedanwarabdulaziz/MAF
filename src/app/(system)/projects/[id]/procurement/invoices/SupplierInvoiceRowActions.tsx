@@ -384,7 +384,7 @@ export default function SupplierInvoiceRowActions({ inv: rowInv, projectId, canA
                   )}
 
                   {/* CONFIRMATION TRAY */}
-                  {(inv.status === 'pending_receipt' || inv.status === 'posted') && (
+                  {(['pending_receipt', 'posted', 'partially_paid', 'paid'].includes(inv.status)) && (
                     <div className="rounded-xl border border-primary/20 bg-blue-50 p-6 flex items-center justify-between">
                       <div>
                         <h3 className="text-lg font-bold text-navy mb-1">تأكيد استلام المواد (GRN - Goods Receipt Note)</h3>
@@ -394,7 +394,22 @@ export default function SupplierInvoiceRowActions({ inv: rowInv, projectId, canA
                         <div className={`flex flex-col items-center p-3 rounded-lg border ${inv.receipt_confirmation?.warehouse_manager_status === 'approved' ? 'bg-success/10 border-success' : 'bg-white border-border'}`}>
                           <span className="text-xs font-bold mb-2">أمين المخزن</span>
                           {inv.receipt_confirmation?.warehouse_manager_status === 'approved' ? (
-                            <span className="text-sm font-bold text-success">✓ تم الاستلام</span>
+                            <>
+                              <span className="text-sm font-bold text-success">✓ تم الاستلام</span>
+                              {inv.discrepancy_status === 'pending' && canWhApprove && (
+                                <button
+                                  onClick={() => {
+                                    const ini: Record<string, number> = {}
+                                    lines.forEach(l => ini[l.id] = 0)
+                                    setPartialInputs(ini)
+                                    setPartialReceiptOpen(true)
+                                  }}
+                                  className="mt-2 rounded bg-navy text-white px-3 py-1.5 text-xs font-semibold shadow-sm hover:bg-navy/90 whitespace-nowrap"
+                                >
+                                  استكمال النواقص
+                                </button>
+                              )}
+                            </>
                           ) : inv.can_wh_approve ? (
                             <button onClick={() => handleConfirmSignature('warehouse_manager')} className="rounded bg-navy text-white px-3 py-1.5 text-xs font-semibold hover:bg-navy/80">
                               توقيع الاستلام
