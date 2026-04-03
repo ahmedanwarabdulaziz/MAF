@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { getInvoiceDetails, saveInvoiceLines, submitInvoiceForReceipt, confirmReceipt, getSupplierReturns, deleteSupplierReturn, postSupplierReturn, receiveAdditionalQuantity } from '@/actions/procurement'
@@ -32,6 +32,9 @@ interface SupplierInvoiceRowActionsProps {
 export default function SupplierInvoiceRowActions({ inv: rowInv, projectId, canApprove, canWhApprove, confirmation }: SupplierInvoiceRowActionsProps) {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
+  // PERF-05: track whether any mutation happened so closeModal can
+  // call router.refresh() only when needed, not on every open/close.
+  const wasMutated = useRef(false)
   
   const [inv, setInv] = useState<any>(null)
   const [lines, setLines] = useState<any[]>([])
@@ -78,18 +81,24 @@ export default function SupplierInvoiceRowActions({ inv: rowInv, projectId, canA
     }
   }
 
-  const closeModal = () => setIsOpen(false)
+  const closeModal = () => {
+    setIsOpen(false)
+    if (wasMutated.current) {
+      wasMutated.current = false
+      router.refresh()
+    }
+  }
 
   async function reloadData() {
     try {
       const data = await getInvoiceDetails(rowInv.id)
       setInv(data)
       setLines(data.lines || [])
-      
       const retData = await getSupplierReturns(rowInv.id)
       setReturns(retData || [])
     } catch(err) {}
-    router.refresh()
+    // PERF-05: router.refresh() removed from here — closeModal() handles it.
+    wasMutated.current = true
   }
 
   function updateLine(index: number, field: string, val: any) {

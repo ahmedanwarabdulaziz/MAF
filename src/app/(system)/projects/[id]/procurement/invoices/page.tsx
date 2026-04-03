@@ -2,25 +2,29 @@ import Link from 'next/link'
 import { getPaginatedSupplierInvoices, getSupplierInvoiceStats } from '@/actions/procurement'
 import NewSupplierInvoiceDialog from './NewSupplierInvoiceDialog'
 import SupplierInvoiceRowActions from './SupplierInvoiceRowActions'
-import { hasPermission } from '@/lib/auth'
-import { createClient } from '@/lib/supabase'
+// PERF-04 / PERF-05A: use server client for server-side reads, not browser client
+import { createClient } from '@/lib/supabase-server'
+import { getAuthorizationContext } from '@/lib/authorization-context'
 import Pagination from '@/components/Pagination'
 
 export default async function SupplierInvoicesList({ params, searchParams }: { params: { id: string }, searchParams: { filter?: string, page?: string } }) {
   const currentPage = searchParams.page ? parseInt(searchParams.page) : 1
   const filter = searchParams.filter
   
-  // Use Promise.all to fetch both stats and the paginated list concurrently
-  const [stats, response] = await Promise.all([
-    getSupplierInvoiceStats(params.id),
-    getPaginatedSupplierInvoices(currentPage, 15, params.id, filter)
-  ])
-  
-  const canApprove = await hasPermission('supplier_procurement', 'review')
-  const canWhApprove = await hasPermission('project_warehouse', 'review')
-
-  // Fetch confirmations for all these invoices so we can show quick icons
+  // AG-PERF-09: getAuthorizationContext() runs in parallel with data queries.
+  // 2 DB queries total for all permission work instead of 2×hasPermission sequential calls.
   const db = createClient()
+  const [stats, response, authz] = await Promise.all([
+    getSupplierInvoiceStats(params.id),
+    getPaginatedSupplierInvoices(currentPage, 15, params.id, filter),
+    getAuthorizationContext({ projectId: params.id }),
+  ])
+
+  authz.require('supplier_procurement', 'view')
+  const canApprove = authz.can('supplier_procurement', 'review')
+  const canWhApprove = authz.can('project_warehouse', 'review')
+
+  // Fetch confirmations for all invoices in the current page
   const invIds = response.data.map((i: any) => i.id) || []
   let confirmations: Record<string, any> = {}
   if (invIds.length > 0) {

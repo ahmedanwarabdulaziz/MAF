@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { redirect } from 'next/navigation'
-import { getAuthUser, getUserProfile } from '@/lib/system-context'
+import { getAuthUser, getUserProfile, getSystemUser } from '@/lib/system-context'
 
 // ─── Session helpers ──────────────────────────────────────────
 
@@ -55,22 +55,18 @@ export async function requireSuperAdmin() {
 /**
  * Require a specific permission, redirecting to /company if not granted.
  * Super admins always pass through.
+ * PERF-06: uses request-cached getSystemUser() — no extra DB round-trips.
  */
 export async function requirePermission(
   moduleKey: string, 
   actionKey: string = 'view',
   context?: { projectId?: string; warehouseId?: string }
 ) {
-  const session = await requireAuth()
-  const supabase = createClient()
-  const { data: profile } = await supabase
-    .from('users')
-    .select('id, is_super_admin')
-    .eq('id', session.user.id)
-    .single()
-
+  const profile = await getSystemUser()
   if (!profile) redirect('/login')
   if (profile.is_super_admin) return profile
+
+  const supabase = createClient()
 
   // Check group-based permission
   let query = supabase
@@ -84,7 +80,6 @@ export async function requirePermission(
   } else if (context?.warehouseId) {
     query = query.or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_warehouse,warehouse_id.eq.${context.warehouseId})`)
   } else {
-    // Global context requires global scopes
     query = query.in('scope_type', ['main_company', 'all_projects'])
   }
 
@@ -123,26 +118,22 @@ export async function signOut() {
 
 /**
  * Check a specific permission, returning boolean instead of redirecting.
+ * PERF-06: Uses request-cached getSystemUser() — eliminates 2 fresh DB
+ * round-trips per call (auth.getUser + users table), which was the main
+ * source of redundancy when pages called hasPermission() 2-3 times.
  */
 export async function hasPermission(
   moduleKey: string, 
   actionKey: string = 'view',
   context?: { projectId?: string; warehouseId?: string }
 ) {
-  const session = await getSession()
-  if (!session) return false
-  
-  const supabase = createClient()
-  const { data: profile } = await supabase
-    .from('users')
-    .select('id, is_super_admin')
-    .eq('id', session.user.id)
-    .single()
-
+  // PERF-06: getSystemUser() is request-cached — 0 DB cost if layout or
+  // requirePermission() already resolved it in this request.
+  const profile = await getSystemUser()
   if (!profile) return false
   if (profile.is_super_admin) return true
 
-  // Check group-based permission
+  const supabase = createClient()
   let query = supabase
     .from('user_permission_group_assignments')
     .select('permission_group_id')
@@ -154,12 +145,10 @@ export async function hasPermission(
   } else if (context?.warehouseId) {
     query = query.or(`scope_type.in.(all_projects,main_company),and(scope_type.eq.selected_warehouse,warehouse_id.eq.${context.warehouseId})`)
   } else {
-    // Global context requires global scopes
     query = query.in('scope_type', ['main_company', 'all_projects'])
   }
 
   const { data: groupAssignments } = await query
-
   if (!groupAssignments?.length) return false
 
   const groupIds = groupAssignments.map(a => a.permission_group_id)

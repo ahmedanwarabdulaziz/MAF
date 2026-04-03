@@ -1,25 +1,29 @@
 import Link from 'next/link'
 import { getPaginatedSupplierInvoices, getSupplierInvoiceStats } from '@/actions/procurement'
 import SupplierInvoiceRowActions from '@/app/(system)/projects/[id]/procurement/invoices/SupplierInvoiceRowActions'
-import { hasPermission } from '@/lib/auth'
-import { createClient } from '@/lib/supabase'
+// PERF-04 / PERF-05A: use server client for server-side reads, not browser client
+import { createClient } from '@/lib/supabase-server'
+import { getAuthorizationContext } from '@/lib/authorization-context'
 import Pagination from '@/components/Pagination'
 
 export default async function GlobalSupplierInvoicesList({ searchParams }: { searchParams: { filter?: string, page?: string } }) {
   const currentPage = searchParams.page ? parseInt(searchParams.page) : 1
   const filter = searchParams.filter
   
-  // Use Promise.all to fetch both stats and the paginated list concurrently
-  const [stats, response] = await Promise.all([
-    getSupplierInvoiceStats(undefined),
-    getPaginatedSupplierInvoices(currentPage, 15, undefined, filter)
-  ])
-  
-  const canApprove = await hasPermission('supplier_procurement', 'review')
-  const canWhApprove = await hasPermission('project_warehouse', 'review')
-
-  // Fetch confirmations for all these invoices so we can show quick icons
+  // AG-PERF-09: authz runs in parallel with data queries. Global scope (no projectId)
+  // because this page aggregates across all projects.
   const db = createClient()
+  const [stats, response, authz] = await Promise.all([
+    getSupplierInvoiceStats(undefined),
+    getPaginatedSupplierInvoices(currentPage, 15, undefined, filter),
+    getAuthorizationContext(),
+  ])
+
+  authz.require('supplier_procurement', 'view')
+  const canApprove = authz.can('supplier_procurement', 'review')
+  const canWhApprove = authz.can('project_warehouse', 'review')
+
+  // Fetch confirmations for all invoices in the current page
   const invIds = response.data.map((i: any) => i.id) || []
   let confirmations: Record<string, any> = {}
   if (invIds.length > 0) {

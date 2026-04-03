@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
-import { requirePermission } from '@/lib/auth'
+import { getAuthorizationContext } from '@/lib/authorization-context'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/format'
@@ -10,9 +10,15 @@ export default async function MainWarehouseIssueDetailPage({
 }: {
   params: { issueId: string }
 }) {
-  await requirePermission('main_warehouse', 'view')
-  const supabase = createClient()
+  // AG-PERF-09: single getAuthorizationContext() call — 2 DB queries total.
+  // Replaces requirePermission (2q) + dynamic import + 3×hasPermission (6q) = 8 queries.
+  const authz = await getAuthorizationContext()
+  authz.require('main_warehouse', 'view')
+  const canApprovePMPerm = authz.can('main_warehouse', 'approve_pm')
+  const canApproveWMPerm = authz.can('main_warehouse', 'approve_wm')
+  const canEditPerm = authz.can('main_warehouse', 'edit')
 
+  const supabase = createClient()
   const { data: issue } = await supabase
     .from('store_issues')
     .select(`
@@ -33,14 +39,6 @@ export default async function MainWarehouseIssueDetailPage({
     .single()
 
   if (!issue) redirect('/company/main_warehouse/issues')
-
-  const { hasPermission } = await import('@/lib/auth')
-
-  const [canApprovePMPerm, canApproveWMPerm, canEditPerm] = await Promise.all([
-    hasPermission('main_warehouse', 'approve_pm'),
-    hasPermission('main_warehouse', 'approve_wm'),
-    hasPermission('main_warehouse', 'edit'),
-  ])
 
   const warehouse = Array.isArray(issue.warehouse) ? issue.warehouse[0] : issue.warehouse
   const project = Array.isArray(issue.project) ? issue.project[0] : issue.project

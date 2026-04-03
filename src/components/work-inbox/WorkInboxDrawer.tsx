@@ -2,8 +2,11 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
-import { getUserNotifications, markNotificationAsRead, markAllUserNotificationsAsRead } from '@/actions/notifications'
-import { WorkInboxItem, WorkInboxPriority, TYPE_LABELS, PRIORITY_LABELS } from '@/lib/work-inbox-types'
+// PERF-03: drawer uses getWorkInboxData directly — getUserNotifications was running
+// getWorkInboxData (10 queries) + system_notifications + merge/re-sort.
+// The drawer is a quick-access preview that doesn't need persisted read-state.
+import { getWorkInboxData } from '@/actions/work-inbox'
+import { WorkInboxItem, WorkInboxPriority, TYPE_LABELS } from '@/lib/work-inbox-types'
 import { useRouter } from 'next/navigation'
 
 const PRIORITY_DOT: Record<string, string> = {
@@ -12,9 +15,8 @@ const PRIORITY_DOT: Record<string, string> = {
   normal:   'bg-emerald-400',
 }
 
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 // Groups for drawer display
+
 const PRIORITY_ORDER: WorkInboxPriority[] = ['critical', 'high', 'normal']
 
 const PRIORITY_DIVIDER_LABELS: Record<WorkInboxPriority, string> = {
@@ -39,7 +41,8 @@ export default function WorkInboxDrawer({ onClose }: Props) {
   // Lazy-load drawer contents only when opened
   const load = useCallback(async () => {
     try {
-      const data = await getUserNotifications()
+      // PERF-03: direct call — no system_notifications merge overhead
+      const data = await getWorkInboxData()
       setItems(data.items.slice(0, 12)) // top 12 by priority
       setTotal(data.counts.total)
       setCounts({
@@ -93,15 +96,13 @@ export default function WorkInboxDrawer({ onClose }: Props) {
   const handleMarkAllAsRead = async (e: React.MouseEvent) => {
     e.stopPropagation()
     e.preventDefault()
-    setItems((prev) => prev?.map(i => ({...i, metadata: {...i.metadata, is_read: true}})) || [])
-    await markAllUserNotificationsAsRead()
-    router.refresh()
+    // PERF-03: dynamic inbox items have no persisted read-state — navigate to full view
+    onClose()
+    router.push('/company/critical-actions')
   }
 
-  const handleItemClick = (item: WorkInboxItem) => {
-    if (item.metadata?.is_read === false && UUID_REGEX.test(item.id)) {
-      markNotificationAsRead(item.id).catch(console.error)
-    }
+  const handleItemClick = (_item: WorkInboxItem) => {
+    // PERF-03: dynamic inbox items don't track read-state — just close and navigate
     onClose()
   }
 

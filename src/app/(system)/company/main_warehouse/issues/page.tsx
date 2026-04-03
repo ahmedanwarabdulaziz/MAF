@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase-server'
 import { createAdminClient } from '@/lib/supabase-admin'
-import { requirePermission } from '@/lib/auth'
+import { getAuthorizationContext } from '@/lib/authorization-context'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/format'
 import NewIssueDialog from './NewIssueDialog'
@@ -8,13 +8,14 @@ import ViewIssueDialog from './ViewIssueDialog'
 import IssueApprovalActions from '@/components/StoreIssueApprovalActions'
 
 export default async function MainWarehouseIssuesPage() {
-  await requirePermission('main_warehouse', 'view')
-  const { hasPermission } = await import('@/lib/auth')
-  const [canApprovePMPerm, canApproveWMPerm, canEditPerm] = await Promise.all([
-    hasPermission('main_warehouse', 'approve_pm'),
-    hasPermission('main_warehouse', 'approve_wm'),
-    hasPermission('main_warehouse', 'edit'),
-  ])
+  // PERF-06 pilot: getAuthorizationContext() resolves all permission checks
+  // in 2 DB queries total (group assignments + permissions), regardless of
+  // how many can() calls follow. Previously 2+6 = 8 queries for auth+perms.
+  const authz = await getAuthorizationContext()
+  authz.require('main_warehouse', 'view')
+  const canApprovePMPerm = authz.can('main_warehouse', 'approve_pm')
+  const canApproveWMPerm = authz.can('main_warehouse', 'approve_wm')
+  const canEditPerm = authz.can('main_warehouse', 'edit')
 
   const supabase = createClient()
 

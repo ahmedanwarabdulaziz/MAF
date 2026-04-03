@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
-import { requirePermission, hasPermission } from '@/lib/auth'
+import { getAuthorizationContext } from '@/lib/authorization-context'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/format'
 import NewStoreIssueDialog from './NewStoreIssueDialog'
@@ -10,35 +10,31 @@ export default async function ProjectStoreIssuesPage({
 }: {
   params: { id: string }
 }) {
-  await requirePermission('project_warehouse', 'view')
   const supabase = createClient()
 
-  // Fetch the project for company_id
-  const { data: project } = await supabase
-    .from('projects')
-    .select('id, company_id')
-    .eq('id', params.id)
-    .single()
-
-  const [canApprovePMPerm, canApproveWMPerm, canEditPerm, isSuperAdminCheck] = await Promise.all([
-    hasPermission('project_warehouse', 'approve_pm'),
-    hasPermission('project_warehouse', 'approve_wm'),
-    hasPermission('project_warehouse', 'edit'),
-    (async () => {
-      const { data: { user: u } } = await supabase.auth.getUser()
-      const { data: cu } = await supabase.from('users').select('is_super_admin').eq('id', u?.id ?? '').single()
-      return cu?.is_super_admin ?? false
-    })(),
+  // PERF-06 pilot: getAuthorizationContext() fetches group assignments + full
+  // permission set in 2 DB queries total, regardless of how many can() checks follow.
+  // Previously: requirePermission (2q) + 3×hasPermission (6q each) = up to 8 queries.
+  // Now: 2 queries total for all permission work + getSystemUser() is cached.
+  const [authz, projectResult] = await Promise.all([
+    getAuthorizationContext({ projectId: params.id }),
+    supabase.from('projects').select('id, company_id').eq('id', params.id).single(),
   ])
-  const isSuperAdmin = isSuperAdminCheck
+
+  authz.require('project_warehouse', 'view')
+  const isSuperAdmin = authz.isSuperAdmin
+  const canApprovePMPerm = authz.can('project_warehouse', 'approve_pm')
+  const canApproveWMPerm = authz.can('project_warehouse', 'approve_wm')
+  const canEditPerm = authz.can('project_warehouse', 'edit')
+  const project = projectResult.data
   const canCancelPerm = isSuperAdmin || canEditPerm
 
-  // Get project warehouse(s)
   const { data: warehouses } = await supabase
     .from('warehouses')
     .select('id, arabic_name')
     .eq('project_id', params.id)
     .eq('is_active', true)
+
 
   const { data: issues } = await supabase
     .from('store_issues')

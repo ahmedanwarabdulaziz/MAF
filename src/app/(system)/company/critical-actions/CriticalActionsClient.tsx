@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { WorkInboxData, WorkInboxItem, WorkInboxItemType, WorkInboxPriority, TYPE_LABELS } from '@/lib/work-inbox-types'
 import WorkInboxKPI from '@/components/work-inbox/WorkInboxKPI'
@@ -70,15 +70,6 @@ export default function CriticalActionsClient({ data }: Props) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set())
   const [refreshing, setRefreshing] = useState(false)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
-
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      router.refresh()
-      setLastRefresh(new Date())
-    }, 5 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [router])
 
   // Manual refresh handler
   const handleRefresh = useCallback(async () => {

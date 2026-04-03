@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase-server'
-import { requirePermission } from '@/lib/auth'
+import { getAuthorizationContext } from '@/lib/authorization-context'
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { formatCurrency } from '@/lib/format'
@@ -13,9 +13,18 @@ export default async function ProjectStoreIssueDetailPage({
   const isUUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(params.issueId);
   if (!params.issueId || !isUUID) notFound();
 
-  await requirePermission('project_warehouse', 'view')
-  const supabase = createClient()
+  // AG-PERF-09: single getAuthorizationContext() call replaces:
+  //   requirePermission (2q) + 3×hasPermission (6q) + inline IIFE getUser+users (2q) = 10 queries.
+  // Now: 2 queries total. isSuperAdmin comes free from the context object.
+  const authz = await getAuthorizationContext({ projectId: params.id })
+  authz.require('project_warehouse', 'view')
 
+  const isSuperAdmin = authz.isSuperAdmin
+  const canApprovePMPerm = authz.can('project_warehouse', 'approve_pm')
+  const canApproveWMPerm = authz.can('project_warehouse', 'approve_wm')
+  const canEditPerm = authz.can('project_warehouse', 'edit')
+
+  const supabase = createClient()
   const { data: issue, error: issueError } = await supabase
     .from('store_issues')
     .select(`
@@ -48,23 +57,6 @@ export default async function ProjectStoreIssueDetailPage({
     )
   }
 
-  // Check exact permission actions — each button only shows if the user's
-  // permission group explicitly grants that specific action.
-  const { hasPermission } = await import('@/lib/auth')
-
-  const [canApprovePMPerm, canApproveWMPerm, canEditPerm, isSuperAdminCheck] = await Promise.all([
-    hasPermission('project_warehouse', 'approve_pm'),
-    hasPermission('project_warehouse', 'approve_wm'),
-    hasPermission('project_warehouse', 'edit'),
-    (async () => {
-      const { data: { user: u } } = await supabase.auth.getUser()
-      const { data: cu } = await supabase.from('users').select('is_super_admin').eq('id', u?.id ?? '').single()
-      return cu?.is_super_admin ?? false
-    })(),
-  ])
-
-  const isSuperAdmin = isSuperAdminCheck
-
   const canApprovePM = canApprovePMPerm &&
     (issue as any).pm_status === 'pending' &&
     (issue as any).status === 'pending_approval'
@@ -76,10 +68,10 @@ export default async function ProjectStoreIssueDetailPage({
   const canCancel = (isSuperAdmin || canEditPerm) &&
     ['pending_approval'].includes((issue as any).status ?? '')
 
-
   const warehouse = Array.isArray(issue.warehouse) ? issue.warehouse[0] : issue.warehouse
   const lines = Array.isArray(issue.lines) ? issue.lines : []
   const totalCost = lines.reduce((s: number, l: any) => s + (Number(l.total_cost) || 0), 0)
+
 
   const statusStyle = {
     confirmed: 'bg-success/10 text-success border-success/30',

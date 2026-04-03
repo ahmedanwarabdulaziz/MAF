@@ -1,29 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { getWorkInboxCount } from '@/actions/work-inbox'
+import { useState } from 'react'
 import WorkInboxDrawer from './WorkInboxDrawer'
 
-export default function TopbarInboxButton() {
-  const [count, setCount]         = useState<number | null>(null)
-  const [drawerOpen, setDrawer]   = useState(false)
+// PERF-02 / PERF-03: initialCount is now passed from the server layout.
+// No mount-time client fetch. No polling interval.
+// The badge reflects the server-rendered count and updates on navigation.
+type Props = {
+  initialCount?: number
+}
 
-  // Lightweight count fetch — runs once on mount, then every 2 minutes
-  useEffect(() => {
-    let cancelled = false
-    const fetchCount = async () => {
-      try {
-        const n = await getWorkInboxCount()
-        if (!cancelled) setCount(n)
-      } catch {
-        // Silent fail — badge simply stays hidden
-      }
-    }
-    fetchCount()
-    const interval = setInterval(fetchCount, 2 * 60 * 1000)
-    return () => { cancelled = true; clearInterval(interval) }
-  }, [])
+export default function TopbarInboxButton({ initialCount = 0 }: Props) {
+  const [drawerOpen, setDrawer] = useState(false)
 
   return (
     <>
@@ -37,10 +25,10 @@ export default function TopbarInboxButton() {
         <span className="text-base">⚡</span>
         <span className="hidden sm:inline">الإجراءات</span>
 
-        {/* Badge */}
-        {count != null && count > 0 && (
-          <span className="absolute -top-1 -left-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1 animate-pulse">
-            {count > 99 ? '99+' : count}
+        {/* Badge — rendered from server-passed count, no client fetch */}
+        {initialCount > 0 && (
+          <span className="absolute -top-1 -left-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white px-1">
+            {initialCount > 99 ? '99+' : initialCount}
           </span>
         )}
       </button>
@@ -52,3 +40,4 @@ export default function TopbarInboxButton() {
     </>
   )
 }
+

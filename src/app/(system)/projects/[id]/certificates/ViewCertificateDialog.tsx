@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   getCertificateDetails,
@@ -40,7 +40,16 @@ export default function ViewCertificateDialog({
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
   const openModal = () => setIsOpen(true)
-  const closeModal = () => { setIsOpen(false); router.refresh() }
+  // PERF-05: only refresh the server list if a mutation actually happened.
+  // Closing after just viewing should never trigger router.refresh().
+  const wasMutated = useRef(false)
+  const closeModal = () => {
+    setIsOpen(false)
+    if (wasMutated.current) {
+      wasMutated.current = false
+      router.refresh()
+    }
+  }
 
   // Load data whenever the dialog opens
   useEffect(() => {
@@ -122,6 +131,7 @@ export default function ViewCertificateDialog({
     setSuccessMsg(null)
     try {
       await saveCertificateLines(cert.id, cert.subcontract_agreement_id, lines)
+      wasMutated.current = true
       await load(false)
       setSuccessMsg('تم حفظ الكميات وإعادة الحساب بنجاح.')
       setTimeout(() => setSuccessMsg(null), 3000)
@@ -153,6 +163,7 @@ export default function ViewCertificateDialog({
       }
       setTimeout(() => setSuccessMsg(null), 3000)
       await load(false)
+      wasMutated.current = true
     } catch (err: any) {
       setError(err.message || 'حدث خطأ')
     } finally {
@@ -262,6 +273,7 @@ export default function ViewCertificateDialog({
     setSaving(true)
     try {
       await approveCertificate(certId, projectId)
+      wasMutated.current = true
       router.refresh()
     } catch (err: any) {
       alert(err.message || 'حدث خطأ أثناء الاعتماد')
@@ -275,6 +287,7 @@ export default function ViewCertificateDialog({
     setSaving(true)
     try {
       await deleteCertificate(certId, projectId)
+      wasMutated.current = true
       router.refresh()
     } catch (err: any) {
       alert(err.message || 'حدث خطأ أثناء الحذف')

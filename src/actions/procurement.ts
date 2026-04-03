@@ -925,6 +925,22 @@ export async function getDiscrepancyInvoices(projectId?: string) {
   return data
 }
 
+// PERF-02: COUNT-only discrepancy query for sidebar badge.
+// Returns a number only — no joined rows. Replaces the full-row fetch
+// that getDiscrepancyInvoices() was doing inside DiscrepancyBadge.
+export async function getDiscrepancyCount(projectId?: string): Promise<number> {
+  const supabase = createClient()
+  let query = supabase
+    .from('supplier_invoices')
+    .select('id', { count: 'exact', head: true })
+    .eq('discrepancy_status', 'pending')
+
+  if (projectId) query = query.eq('project_id', projectId)
+
+  const { count } = await query
+  return count ?? 0
+}
+
 
 // -------------------------------------------------------------
 // SUPPLIER RETURNS

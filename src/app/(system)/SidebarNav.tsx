@@ -3,12 +3,14 @@
 import Link from 'next/link'
 import { useParams, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { getDiscrepancyInvoices } from '@/actions/procurement'
+// PERF-02: Use COUNT-only action — sidebar badge only needs a number, not full rows
+import { getDiscrepancyCount } from '@/actions/procurement'
 
 function DiscrepancyBadge({ projectId }: { projectId?: string }) {
   const [count, setCount] = useState(0)
   useEffect(() => {
-    getDiscrepancyInvoices(projectId || undefined).then(data => setCount(data?.length || 0)).catch(() => {})
+    // PERF-02: COUNT-only HEAD request — replaces full row fetch
+    getDiscrepancyCount(projectId || undefined).then(n => setCount(n)).catch(() => {})
   }, [projectId])
 
   if (count === 0) return null

@@ -14,6 +14,7 @@ import SupplierInvoiceDialog from "@/components/procurement/SupplierInvoiceDialo
 import GlobalSearchBar from "@/components/layout/GlobalSearchBar";
 import { QueryProvider } from "@/providers/query-provider";
 import TopbarInboxButton from "@/components/work-inbox/TopbarInboxButton";
+import { getWorkInboxCount } from "@/actions/work-inbox";
 
 async function getActiveProjects() {
   const supabase = createClient();
@@ -41,13 +42,15 @@ export default async function SystemLayout({
     redirect("/login");
   }
 
-  // Load effective permissions and scopes in parallel with projects and company data
+  // PERF-02: load inbox count server-side in the same parallel batch.
+  // TopbarInboxButton receives it as initialCount — zero client fetches on mount.
   const tParallel = perfMark('layout:parallel-fetch')
-  const [projects, allowedModules, userScopes, company] = await Promise.all([
+  const [projects, allowedModules, userScopes, company, inboxCount] = await Promise.all([
     getActiveProjects(),
     getEffectiveModuleKeys(user.id, { includeAllScopes: true }),
     getUserScopes(user.id),
     getCompany(),
+    getWorkInboxCount().catch(() => 0),
   ]);
   perfEnd(tParallel)
   perfEnd(tLayout)
@@ -109,7 +112,8 @@ export default async function SystemLayout({
 
           <div className="flex items-center gap-6 shrink-0 mr-4 relative w-full justify-end sm:w-auto">
             <GlobalSearchBar />
-            <TopbarInboxButton />
+            {/* PERF-02: initialCount served from layout — no client fetch */}
+            <TopbarInboxButton initialCount={inboxCount} />
           </div>
         </header>
 
