@@ -69,7 +69,7 @@ export default async function SystemLayout({
           </Link>
         </div>
 
-        <div className="flex-1 overflow-hidden px-3 py-3">
+        <div className="flex-1 overflow-y-auto px-3 py-3 sidebar-scroll">
           <SidebarNav
             isSuperAdmin={isSuperAdmin}
             allowedModules={allowedModulesArray}
@@ -98,8 +98,8 @@ export default async function SystemLayout({
       </aside>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6 shadow-sm">
+      <div className="flex flex-1 flex-col min-h-0">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-background px-6 shadow-sm">
           {/* Project / Company navigation tags */}
           <div className="flex-1 overflow-x-auto">
             <HeaderNav

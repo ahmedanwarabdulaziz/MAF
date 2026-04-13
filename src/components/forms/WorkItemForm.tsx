@@ -71,7 +71,13 @@ export default function WorkItemForm({
     
     try {
       if (initialData?.id) {
-        await updateProjectWorkItem(initialData.id, projectId, formData)
+        const cleanUpdates = {
+          ...formData,
+          default_unit_id: formData.default_unit_id || null,
+          english_description: formData.english_description || null,
+          notes: formData.notes || null,
+        }
+        await updateProjectWorkItem(initialData.id, projectId, cleanUpdates)
       } else {
         await createProjectWorkItem({ ...formData, project_id: projectId, company_id: companyId })
       }

@@ -89,24 +89,34 @@ export async function createProjectWorkItem(data: {
 
 export async function updateProjectWorkItem(id: string, projectId: string, updates: any) {
   const supabase = createClient()
+
+  // Sanitise nullable fields — never send empty string for UUID columns
+  const cleanUpdates = {
+    ...updates,
+    default_unit_id:       updates.default_unit_id       || null,
+    english_description:   updates.english_description   || null,
+    notes:                 updates.notes                 || null,
+  }
+
   const { data: result, error } = await supabase
     .from('project_work_items')
-    .update(updates)
+    .update(cleanUpdates)
     .eq('id', id)
     .select()
     .single()
 
-  if (error) throw error
+  if (error) throw new Error(error.message)
 
   await writeAuditLog({
     action: 'work_item_updated',
     entity_type: 'project_work_item',
     entity_id: id,
     description: `تعديل بند أعمال`,
-    metadata: { project_id: projectId, updates },
+    metadata: { project_id: projectId },
   })
 
-  revalidatePath(`/projects/${projectId}/work-items`)
+  // Note: no revalidatePath here — the work-items page is 'use client'
+  // and refreshes via fetchItems() callback after each mutation.
   return result
 }
 
@@ -126,8 +136,7 @@ export async function deleteProjectWorkItem(id: string, projectId: string) {
     description: `حذف بند أعمال من المشروع`,
     metadata: { project_id: projectId },
   })
-
-  revalidatePath(`/projects/${projectId}/work-items`)
+  // Note: no revalidatePath — client side calls fetchItems() after delete
 }
 
 

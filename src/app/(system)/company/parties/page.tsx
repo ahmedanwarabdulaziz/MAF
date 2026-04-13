@@ -1,8 +1,10 @@
 import { getParties, PartyRoleType } from '@/lib/projects'
 import { requirePermission } from '@/lib/auth'
+import { getSystemUser } from '@/lib/system-context'
 import Link from 'next/link'
 import PartiesFilterBar from './PartiesFilterBar'
 import NewPartyDialog from './NewPartyDialog'
+import DeletePartyButton from './DeletePartyButton'
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'مالك', subcontractor: 'مقاول', supplier: 'مورد',
@@ -19,6 +21,8 @@ export default async function PartiesPage(props: {
   searchParams: Promise<{ q?: string; role?: string; status?: string }>
 }) {
   await requirePermission('party_masters', 'view')
+  const user = await getSystemUser()
+  const isSuperAdmin = user?.is_super_admin ?? false
   const searchParams = await props.searchParams
   const parties = await getParties({
     q: searchParams.q,
@@ -97,15 +101,20 @@ export default async function PartiesPage(props: {
                       </span>
                     </td>
                     <td className="px-6 py-4">
-                      <Link
-                        href={`/company/parties/${party.id}/edit`}
-                        title="تعديل"
-                        className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </Link>
+                      <div className="flex items-center gap-1.5">
+                        <Link
+                          href={`/company/parties/${party.id}/edit`}
+                          title="تعديل"
+                          className="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-border text-text-secondary hover:border-primary hover:text-primary hover:bg-primary/5 transition-colors"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </Link>
+                        {isSuperAdmin && (
+                          <DeletePartyButton partyId={party.id} partyName={party.arabic_name} />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
