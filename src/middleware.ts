@@ -46,7 +46,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/login') ||
     pathname === '/' ||
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api/auth')
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/mobile')
 
   if (!isPublic && !user) {
     const loginUrl = request.nextUrl.clone()

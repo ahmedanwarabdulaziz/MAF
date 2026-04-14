@@ -14,8 +14,8 @@ import {
 // Read-only. No schema changes. No approval logic touched.
 // ============================================================
 
-export async function getWorkInboxData(projectId?: string): Promise<WorkInboxData> {
-  const supabase = createClient()
+export async function getWorkInboxData(projectId?: string, overrideClient?: any): Promise<WorkInboxData> {
+  const supabase = overrideClient ?? createClient()
 
   // Fetch all Wave 1 + Wave 2 sources in parallel
   const [
@@ -152,7 +152,6 @@ export async function getWorkInboxData(projectId?: string): Promise<WorkInboxDat
       createdAt:   pr.created_at,
       dueAt:       pr.required_by_date ?? null,
       ageDays,
-      priority:    derivePriority(ageDays, pr.required_by_date),
       href:        pr.project_id
                      ? `/projects/${pr.project_id}/procurement/requests?view_pr=${pr.id}&projectId=${pr.project_id}`
                      : `/company/approvals?view_pr=${pr.id}`,
@@ -160,6 +159,8 @@ export async function getWorkInboxData(projectId?: string): Promise<WorkInboxDat
       badges:      ['طلب شراء'],
     })
   }
+
+
 
   // ── Adapter: Approved Purchase Requests (Ready for Invoicing) ──────
   for (const pr of prsApprovedResult?.data ?? []) {

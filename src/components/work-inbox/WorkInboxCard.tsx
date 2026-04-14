@@ -40,8 +40,8 @@ type Props = {
 }
 
 export default function WorkInboxCard({ item, onDialogOpen }: Props) {
-  const style = PRIORITY_STYLES[item.priority]
-  const typeLabel = TYPE_LABELS[item.type]
+  const style = PRIORITY_STYLES[item.priority] || PRIORITY_STYLES['normal']
+  const typeLabel = TYPE_LABELS[item.type] || 'إشعار نظام'
   const isUnread = item.metadata?.is_read === false
 
   const handleClick = (e: React.MouseEvent) => {
@@ -85,7 +85,7 @@ export default function WorkInboxCard({ item, onDialogOpen }: Props) {
           <span className="text-[11px] font-semibold text-text-secondary">{typeLabel}</span>
         </div>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${style.badge}`}>
-          {PRIORITY_LABELS[item.priority]}
+          {PRIORITY_LABELS[item.priority || 'normal']}
         </span>
       </div>
 
