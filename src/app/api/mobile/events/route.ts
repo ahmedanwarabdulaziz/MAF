@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
     const adminClient = createAdminClient()
 
     const event = {
-      user_id: session.user.id,
+      user_id: session.userId,
       action_type,
       entity_type: entity_type || null,
       entity_id: entity_id || null,

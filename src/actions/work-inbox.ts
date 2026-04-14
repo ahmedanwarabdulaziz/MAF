@@ -152,6 +152,7 @@ export async function getWorkInboxData(projectId?: string, overrideClient?: any)
       createdAt:   pr.created_at,
       dueAt:       pr.required_by_date ?? null,
       ageDays,
+      priority:    derivePriority(ageDays),
       href:        pr.project_id
                      ? `/projects/${pr.project_id}/procurement/requests?view_pr=${pr.id}&projectId=${pr.project_id}`
                      : `/company/approvals?view_pr=${pr.id}`,
